@@ -1,0 +1,161 @@
+# ═══════════════════════════════════════════════════════════════
+# CloudPilot — local development stack
+# `make dev` brings up everything. ARM64-compatible images.
+# ═══════════════════════════════════════════════════════════════
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudpilot-postgres
+    environment:
+      POSTGRES_DB: cloudpilot
+      POSTGRES_USER: cp
+      POSTGRES_PASSWORD: cp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cp -d cloudpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudpilot-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: cloudpilot-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cloudpilot-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - /Volumes/AzizBNA SSD/ollama/models:/root/.ollama/models
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloudpilot-backend
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn cloudpilot.main:app --host 0.0.0.0 --port 8000 --reload"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cp:cp@postgres:5432/cloudpilot
+      REDIS_URL: redis://redis:6379/0
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: "8000"
+      OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloudpilot-scheduler
+    command: python -m cloudpilot.ai.orchestrator
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cp:cp@postgres:5432/cloudpilot
+      REDIS_URL: redis://redis:6379/0
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: "8000"
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ./backend:/app
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: cloudpilot-frontend
+    command: pnpm dev --host 0.0.0.0 --port 5173
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cloudpilot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cloudpilot-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-cloudpilot}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+  grafana_data:

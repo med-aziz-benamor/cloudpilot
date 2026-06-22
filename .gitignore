@@ -1,0 +1,67 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+.python-version
+
+# Poetry
+poetry.lock
+
+# ─── Node / Frontend ──────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+pnpm-debug.log*
+npm-debug.log*
+yarn-error.log*
+
+# ─── Environment & secrets ────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+fernet.key
+
+# ─── Data / runtime volumes ───────────────────────────────
+chroma_data/
+ollama_data/
+postgres_data/
+redis_data/
+*.sqlite3
+*.db
+
+# ─── IDE / OS ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ─── Terraform ────────────────────────────────────────────
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# ─── Build / logs ─────────────────────────────────────────
+logs/
+*.log
+coverage/
+playwright-report/
+test-results/

@@ -1,0 +1,17 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cp" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D6EFD" />
+      <stop offset="1" stop-color="#0DCAF0" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#cp)" />
+  <!-- cloud -->
+  <path
+    d="M10 21h11a4 4 0 0 0 .4-7.98A6 6 0 0 0 9.2 14.2 3.5 3.5 0 0 0 10 21z"
+    fill="#FFFFFF"
+    fill-opacity="0.95"
+  />
+  <!-- pilot / navigation arrow -->
+  <path d="M16 9.5l3.2 6.4-3.2-1.6-3.2 1.6L16 9.5z" fill="#0A1628" />
+</svg>
