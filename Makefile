@@ -29,6 +29,12 @@ migrate: ## Run Alembic migrations inside the backend container
 seed: ## Seed the demo dataset (Acme Corp + 90 days of data)
 	$(COMPOSE) -f $(COMPOSE_FILE) exec backend python -m cloudpilot.utils.mock_data
 
+pricing: ## Refresh the pricing snapshot from the public rate-card APIs (no cloud creds)
+	$(COMPOSE) -f $(COMPOSE_FILE) exec backend python -m cloudpilot.pricing.refresh
+
+pricing-deep: ## Refresh pricing, fetching the large AWS offer files too (slow)
+	$(COMPOSE) -f $(COMPOSE_FILE) exec backend python -m cloudpilot.pricing.refresh --deep
+
 test: ## Run backend + frontend tests
 	$(COMPOSE) -f $(COMPOSE_FILE) exec backend pytest -q
 	cd frontend && pnpm test --run

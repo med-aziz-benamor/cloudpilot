@@ -60,7 +60,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full narrative.
 | Make | any |
 
 Everything runs locally via Docker. On an Apple Silicon (M1/ARM64) machine all images
-are ARM-compatible. The default local LLM is **Qwen 2.5 4B via Ollama** (≈5 GB RAM).
+are ARM-compatible. The default local LLM is **Qwen 2.5 3B via Ollama** (≈2 GB RAM). Pull it with `ollama pull qwen2.5:3b`.
 
 ---
 
@@ -160,16 +160,66 @@ make docs         # Serve docs locally
 
 ---
 
+## Where the Numbers Come From
+
+CloudPilot runs on a **simulated cloud estate priced from real, published rate cards**.
+This is deliberate, and the split matters:
+
+| | Simulated | Real |
+|---|---|---|
+| **Usage** — which resources exist, how many nodes they run, how busy they are, how many GB they store | ✅ | |
+| **Price** — the $/hour and $/GB-month every cost is computed from | | ✅ |
+
+No dollar figure in the platform is hand-written. Billing is always
+`published_rate × simulated_usage`, so any number on screen can be traced back to the
+provider that published it. `RightSizingAgent` saying "downsize `Standard_D4s_v3` →
+`Standard_D2s_v3`, save $88/month" is the genuine delta between two Azure rates
+($0.24/hr − $0.12/hr, × 730 hours), not an invented figure.
+
+Rates come from the providers' **public, keyless** pricing APIs — no cloud account, no
+subscription, and no spend required:
+
+- **Azure** → the [Retail Prices API](https://prices.azure.com/api/retail/prices), queried live.
+- **AWS** → the Price List bulk offer files. These run to hundreds of MB, so the default
+  refresh uses AWS's published list prices and `make pricing-deep` fetches the real files.
+- **GCP** → the Cloud Billing Catalog API needs an API key, so GCP uses published list prices.
+
+Every rate carries its **provenance** (`azure_retail_api` vs `published_list_price`) and
+an as-of date, both surfaced on the recommendations that depend on it. Refresh the
+committed snapshot with:
+
+```bash
+make pricing         # fast: Azure API + published list prices
+make pricing-deep    # also fetch the large AWS offer files
+```
+
+Cost **anomalies are physical, not arithmetic.** The demo's Kubernetes spike is not a
+`cost *= 4.4` fudge — it is a misconfigured autoscaler taking `aks-prod-cluster` from 4
+nodes to 18 for three days, and the $80.64/day of extra spend is exactly what 14 more
+`Standard_D4s_v3` nodes cost. That is why the CostAgent's root-cause explanation is
+actually true of the estate it is describing.
+
+The recommendations in the demo are **not seeded** — `make seed` builds the estate and
+then runs the real CostAgent, RightSizingAgent and ForecastAgent against it. What you
+see on the recommendations page is what the agents genuinely found.
+
+---
+
 ## Connecting Real Cloud Accounts
 
-By default `DEMO_MODE=true` and every cloud adapter returns mock data. To connect a
-real provider, set `DEMO_MODE=false` and fill the relevant block in `.env`:
+> **Status: partially implemented.** Resource *inventory* works for Azure and AWS.
+> Live **billing and metrics are not implemented for any provider** — those adapter
+> methods raise `NotImplementedError` rather than silently returning simulated figures,
+> because presenting invented costs as a real invoice would have the agents raise
+> anomalies against spend that never happened. Keep `DEMO_MODE=true` until they are wired.
 
-- **Azure** → `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID`
-  (service principal needs *Reader* + *Cost Management Reader*).
-- **AWS** → `AWS_ACCOUNT_ID`, `AWS_ROLE_ARN`, `AWS_EXTERNAL_ID` (read-only IAM role with
-  Cost Explorer + CloudWatch).
-- **GCP** → `GCP_PROJECT_ID`, `GCP_SERVICE_ACCOUNT_JSON` (billing viewer + monitoring viewer).
+When implementing them, the entry points are:
+
+- **Azure** → `CostManagementClient.query.usage()` and `MonitorManagementClient.metrics.list()`.
+  Service principal needs *Reader* + *Cost Management Reader*.
+- **AWS** → Cost Explorer `get_cost_and_usage()` and CloudWatch `get_metric_statistics()`.
+  Read-only IAM role with an external id.
+- **GCP** → the BigQuery billing export and Cloud Monitoring `list_time_series()`.
 
 CloudPilot is **read-only by design** — it never creates, updates or deletes cloud resources.
 
