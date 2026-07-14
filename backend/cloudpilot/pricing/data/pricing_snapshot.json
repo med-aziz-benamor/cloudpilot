@@ -1,0 +1,217 @@
+{
+  "generated_at": "2026-07-14T11:50:46.190813+01:00",
+  "regions": {
+    "azure": "westeurope",
+    "aws": "eu-west-1",
+    "gcp": "europe-west1"
+  },
+  "prices": {
+    "C1": {
+      "provider": "azure",
+      "amount": 0.055,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "C1 Cache",
+      "currency": "USD"
+    },
+    "GP_Gen5_2": {
+      "provider": "azure",
+      "amount": 0.334878,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "SQL GP Gen5 vCore x2",
+      "currency": "USD"
+    },
+    "GP_Gen5_4": {
+      "provider": "azure",
+      "amount": 0.669756,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "SQL GP Gen5 vCore x4",
+      "currency": "USD"
+    },
+    "P1v3": {
+      "provider": "azure",
+      "amount": 0.178,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "P1 v3 App",
+      "currency": "USD"
+    },
+    "Standard_D2s_v3": {
+      "provider": "azure",
+      "amount": 0.12,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "D2s v3",
+      "currency": "USD"
+    },
+    "Standard_D4s_v3": {
+      "provider": "azure",
+      "amount": 0.24,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "D4s v3",
+      "currency": "USD"
+    },
+    "Standard_D8s_v3": {
+      "provider": "azure",
+      "amount": 0.48,
+      "unit": "hour",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "D8s v3",
+      "currency": "USD"
+    },
+    "blob_hot_lrs": {
+      "provider": "azure",
+      "amount": 0.0196,
+      "unit": "gb_month",
+      "region": "westeurope",
+      "source": "azure_retail_api",
+      "meter": "Hot LRS Data Stored",
+      "currency": "USD"
+    },
+    "cache.m5.large": {
+      "provider": "aws",
+      "amount": 0.193,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "cache.m5.xlarge": {
+      "provider": "aws",
+      "amount": 0.386,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "db-n1-standard-1": {
+      "provider": "gcp",
+      "amount": 0.0576,
+      "unit": "hour",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "db-n1-standard-2": {
+      "provider": "gcp",
+      "amount": 0.1152,
+      "unit": "hour",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "db.m5.large": {
+      "provider": "aws",
+      "amount": 0.178,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "db.m5.xlarge": {
+      "provider": "aws",
+      "amount": 0.356,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "gcs_standard": {
+      "provider": "gcp",
+      "amount": 0.02,
+      "unit": "gb_month",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "m5.2xlarge": {
+      "provider": "aws",
+      "amount": 0.428,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "m5.large": {
+      "provider": "aws",
+      "amount": 0.107,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "m5.xlarge": {
+      "provider": "aws",
+      "amount": 0.214,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "n2-standard-2": {
+      "provider": "gcp",
+      "amount": 0.10718,
+      "unit": "hour",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "n2-standard-4": {
+      "provider": "gcp",
+      "amount": 0.21436,
+      "unit": "hour",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "n2-standard-8": {
+      "provider": "gcp",
+      "amount": 0.42872,
+      "unit": "hour",
+      "region": "europe-west1",
+      "source": "published_list_price",
+      "meter": "cloud.google.com/compute/all-pricing",
+      "currency": "USD"
+    },
+    "s3_standard": {
+      "provider": "aws",
+      "amount": 0.023,
+      "unit": "gb_month",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    },
+    "t3.medium": {
+      "provider": "aws",
+      "amount": 0.0456,
+      "unit": "hour",
+      "region": "eu-west-1",
+      "source": "published_list_price",
+      "meter": "aws.amazon.com/s3/pricing",
+      "currency": "USD"
+    }
+  }
+}
