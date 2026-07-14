@@ -38,7 +38,12 @@ services:
     restart: unless-stopped
 
   chromadb:
-    image: chromadb/chroma:latest
+    # Pinned deliberately, and must stay in lockstep with the `chromadb` client pinned
+    # in backend/pyproject.toml. `:latest` drifted to a 1.x server that removed the v1
+    # API the 0.5 client speaks, so every connection 410'd and the RAG engine silently
+    # fell back to its in-memory store — the knowledge base looked fine but never
+    # persisted. Bump both together or not at all.
+    image: chromadb/chroma:0.5.23
     container_name: cloudpilot-chromadb
     ports:
       - "8001:8000"

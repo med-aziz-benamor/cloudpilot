@@ -57,14 +57,18 @@ class Settings(BaseSettings):
 
     # ─── AI ────────────────────────────────────────────────
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:4b"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
     CHROMADB_HOST: str = "localhost"
     CHROMADB_PORT: int = 8000
     CHROMADB_COLLECTION: str = "cloudpilot_docs_v1"
     OPENAI_API_KEY: str = ""
-    LLM_MAX_OUTPUT_TOKENS: int = 2048
-    LLM_TIMEOUT_SECONDS: int = 30
+    # The system prompt asks for answers under ~250 words; 2048 tokens of headroom
+    # just let a small local model ramble past the timeout.
+    LLM_MAX_OUTPUT_TOKENS: int = 512
+    # A 3B model doing RAG on CPU needs far longer than a hosted API would. Too low a
+    # timeout silently routes every answer to the offline fallback.
+    LLM_TIMEOUT_SECONDS: int = 180
 
     # ─── Cloud Providers ───────────────────────────────────
     DEMO_MODE: bool = True

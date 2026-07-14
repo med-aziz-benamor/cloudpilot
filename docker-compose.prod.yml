@@ -29,7 +29,7 @@ services:
     restart: always
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.23
     volumes:
       - chroma_data:/chroma/chroma
     environment:

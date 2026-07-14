@@ -93,16 +93,28 @@ class LLMClient:
 
     @staticmethod
     def _fallback(messages: list[dict[str, str]]) -> str:
-        """Deterministic offline answer so the chat UI always responds."""
-        question = next(
-            (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-        )
+        """Answer shown when the LLM is unreachable.
+
+        This is *not* a model answer, and it must never be mistaken for one. Two rules:
+
+        * It says so, first thing. A canned paragraph dressed up as a grounded answer
+          (with a citation chip attached) is worse than an honest error.
+        * It never echoes the prompt back. The last ``user`` message is the fully
+          assembled prompt — context documents, live infrastructure data and all — not
+          the question the user typed, so quoting it leaked the entire prompt into the
+          chat window.
+        """
+        last = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        # Recover the real question from the assembled prompt (see rag/prompts.py).
+        marker = "USER QUESTION:"
+        question = last.rsplit(marker, 1)[-1].strip() if marker in last else last.strip()
         return (
-            "Based on the available infrastructure data and best-practice guidance, "
-            "here is a concise assessment.\n\n"
-            f"You asked: \"{question.strip()[:200]}\". "
-            "Review the cited sources below for the full context. "
-            "(Local LLM offline — showing a grounded summary from retrieved documents.) [1]"
+            "⚠️ The local language model is unavailable, so this is not a generated "
+            "answer.\n\n"
+            f'Your question — "{question[:180]}" — was not sent to a model. '
+            "The retrieved source documents are listed below and may still be useful. "
+            "Start Ollama (and confirm OLLAMA_MODEL matches a pulled model) to get a "
+            "real answer."
         )
 
     @staticmethod
