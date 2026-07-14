@@ -11,24 +11,26 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import pandas as pd
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudpilot.ai.base_agent import AgentBase
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.forecast_snapshot import ForecastSnapshot
+from cloudpilot.models.organization import Organization
 from cloudpilot.models.recommendation import (
     AgentType,
     Recommendation,
     RecommendationStatus,
 )
-from cloudpilot.ai.base_agent import AgentBase
 
-_DEFAULT_BUDGET = 45_000.0
+#: Fire the alert once the projection exceeds the budget by this margin, so a
+#: forecast that lands a rounding error over budget does not page anyone.
 _OVERRUN_TRIGGER = 1.10
 
 
@@ -123,6 +125,18 @@ class ForecastAgent(AgentBase):
     async def _maybe_budget_alert(
         self, db: AsyncSession, organization_id: uuid.UUID, model, df: pd.DataFrame
     ) -> int:
+        """Raise an overrun alert only against a budget the tenant actually set."""
+        org = await db.get(Organization, organization_id)
+        if org is None or org.monthly_budget_usd is None:
+            # No budget on file. Alerting against an invented figure is noise — which
+            # is exactly what a single hardcoded constant produced for every tenant.
+            logger.info(
+                "ForecastAgent: org {} has no monthly budget set; skipping overrun check.",
+                organization_id,
+            )
+            return 0
+        budget = float(org.monthly_budget_usd)
+
         today = date.today()
         days_left = (self._month_end(today) - today).days
         mtd = float(df[df["ds"].apply(lambda d: d.month == today.month)]["y"].sum())
@@ -138,7 +152,7 @@ class ForecastAgent(AgentBase):
             remaining = 0.0
         projected = mtd + remaining
 
-        if projected <= _DEFAULT_BUDGET * _OVERRUN_TRIGGER:
+        if projected <= budget * _OVERRUN_TRIGGER:
             return 0
 
         # Avoid duplicate pending budget alerts.
@@ -154,7 +168,7 @@ class ForecastAgent(AgentBase):
         if dup:
             return 0
 
-        overrun_pct = (projected / _DEFAULT_BUDGET - 1) * 100
+        overrun_pct = (projected / budget - 1) * 100
         db.add(
             Recommendation(
                 organization_id=organization_id,
@@ -163,7 +177,7 @@ class ForecastAgent(AgentBase):
                 description=(
                     f"At current burn rate, this month projects to "
                     f"${projected:,.0f} ({overrun_pct:.0f}% over the "
-                    f"${_DEFAULT_BUDGET:,.0f} budget)."
+                    f"${budget:,.0f} budget)."
                 ),
                 estimated_saving_usd=None,
                 confidence=0.87,
@@ -171,7 +185,7 @@ class ForecastAgent(AgentBase):
                 metadata_json={
                     "current_mtd": round(mtd, 2),
                     "projected_month_end": round(projected, 2),
-                    "budget": _DEFAULT_BUDGET,
+                    "budget": budget,
                     "overrun_pct": round(overrun_pct, 1),
                 },
             )

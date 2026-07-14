@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import enum
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Index, String
+from sqlalchemy import Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cloudpilot.database import BaseModel
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from cloudpilot.models.user import User
 
 
-class OrgPlan(str, enum.Enum):
+class OrgPlan(enum.StrEnum):
     """Subscription tier."""
 
     FREE = "free"
@@ -32,9 +33,16 @@ class Organization(BaseModel):
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     plan: Mapped[OrgPlan] = mapped_column(
-        SAEnum(OrgPlan, name="org_plan"),
+        SAEnum(OrgPlan, name="org_plan", native_enum=False),
         default=OrgPlan.FREE,
         nullable=False,
+    )
+    #: The tenant's monthly cloud budget. ForecastAgent raises an overrun alert when
+    #: projected month-end spend exceeds this. NULL means "no budget set", in which
+    #: case no alert is raised — an alert against a budget the tenant never agreed to
+    #: is noise, which is what a single hardcoded figure produced for every org.
+    monthly_budget_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
     )
 
     users: Mapped[list[User]] = relationship(
