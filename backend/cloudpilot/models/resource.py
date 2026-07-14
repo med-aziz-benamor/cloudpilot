@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +38,10 @@ class Resource(BaseModel):
     service: Mapped[str] = mapped_column(String(80), nullable=False)
     region: Mapped[str] = mapped_column(String(40), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: How many instances of ``sku`` this resource bills for. A single VM is 1; an AKS
+    #: or GKE node pool of four nodes is 4. Without this, a right-sizing saving is
+    #: computed per-instance and under-reports a node pool by its node count.
+    node_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     tags_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False
     )

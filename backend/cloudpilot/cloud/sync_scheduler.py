@@ -78,6 +78,7 @@ async def _sync_resources(
         res.service = dto.service
         res.region = dto.region
         res.sku = dto.sku
+        res.node_count = dto.node_count
         res.tags_json = dto.tags
         res.is_active = True
         res.last_seen_at = now

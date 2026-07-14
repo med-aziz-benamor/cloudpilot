@@ -26,6 +26,8 @@ class ResourceDTO:
     service: str
     region: str
     sku: str | None = None
+    #: Instances of ``sku`` billed by this resource (a node pool bills its node count).
+    node_count: int = 1
     tags: dict[str, Any] = field(default_factory=dict)
 
 
