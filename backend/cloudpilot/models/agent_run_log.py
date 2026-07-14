@@ -16,7 +16,7 @@ from cloudpilot.database import BaseModel
 from cloudpilot.models.recommendation import AgentType
 
 
-class AgentRunStatus(str, enum.Enum):
+class AgentRunStatus(enum.StrEnum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
@@ -31,7 +31,7 @@ class AgentRunLog(BaseModel):
     )
 
     agent: Mapped[AgentType] = mapped_column(
-        SAEnum(AgentType, name="agent_type", create_type=False), nullable=False
+        SAEnum(AgentType, name="agent_type", native_enum=False), nullable=False
     )
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -43,7 +43,7 @@ class AgentRunLog(BaseModel):
         DateTime(timezone=True), nullable=True
     )
     status: Mapped[AgentRunStatus] = mapped_column(
-        SAEnum(AgentRunStatus, name="agent_run_status"),
+        SAEnum(AgentRunStatus, name="agent_run_status", native_enum=False),
         default=AgentRunStatus.RUNNING,
         nullable=False,
     )

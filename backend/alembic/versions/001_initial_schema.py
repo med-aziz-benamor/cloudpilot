@@ -7,6 +7,9 @@ Create Date: 2026-06-18
 This migration creates the complete database schema. The ``metric_samples`` table
 is created as a RANGE-partitioned table on ``timestamp`` with monthly partitions
 spanning the current demo window.
+
+Enum columns are stored as VARCHAR (native_enum=False) to avoid asyncpg codec
+incompatibilities with Python enum serialisation.
 """
 
 from __future__ import annotations
@@ -21,25 +24,6 @@ revision: str = "001_initial_schema"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
-
-
-# ─── Enum type definitions (created once, referenced by columns) ───
-org_plan = postgresql.ENUM("free", "pro", "enterprise", name="org_plan")
-user_role = postgresql.ENUM("admin", "analyst", "viewer", name="user_role")
-cloud_provider = postgresql.ENUM("azure", "aws", "gcp", name="cloud_provider")
-cloud_account_status = postgresql.ENUM(
-    "active", "error", "paused", name="cloud_account_status"
-)
-agent_type = postgresql.ENUM(
-    "cost", "rightsizing", "forecast", "architect", name="agent_type"
-)
-recommendation_status = postgresql.ENUM(
-    "pending", "accepted", "rejected", "snoozed", name="recommendation_status"
-)
-message_role = postgresql.ENUM("user", "assistant", "system", name="message_role")
-agent_run_status = postgresql.ENUM(
-    "running", "success", "failed", name="agent_run_status"
-)
 
 
 def _base_columns() -> list[sa.Column]:
@@ -67,30 +51,14 @@ def _base_columns() -> list[sa.Column]:
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    # pgcrypto provides gen_random_uuid().
     op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
-
-    for enum in (
-        org_plan,
-        user_role,
-        cloud_provider,
-        cloud_account_status,
-        agent_type,
-        recommendation_status,
-        message_role,
-        agent_run_status,
-    ):
-        enum.create(bind, checkfirst=True)
 
     # ─── organizations ───
     op.create_table(
         "organizations",
         *_base_columns(),
         sa.Column("name", sa.String(120), nullable=False),
-        sa.Column(
-            "plan", org_plan, nullable=False, server_default="free"
-        ),
+        sa.Column("plan", sa.String(20), nullable=False, server_default="free"),
     )
     op.create_index("ix_organizations_name", "organizations", ["name"])
 
@@ -107,7 +75,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(255), nullable=False, unique=True),
         sa.Column("password_hash", sa.String(255), nullable=False),
         sa.Column("full_name", sa.String(120), nullable=False, server_default=""),
-        sa.Column("role", user_role, nullable=False, server_default="analyst"),
+        sa.Column("role", sa.String(20), nullable=False, server_default="analyst"),
         sa.Column("mfa_enabled", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("mfa_secret_enc", sa.Text, nullable=True),
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
@@ -125,13 +93,11 @@ def upgrade() -> None:
             sa.ForeignKey("organizations.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("provider", cloud_provider, nullable=False),
+        sa.Column("provider", sa.String(20), nullable=False),
         sa.Column("account_identifier", sa.String(255), nullable=False),
         sa.Column("display_name", sa.String(120), nullable=False),
         sa.Column("credentials_enc", sa.Text, nullable=False),
-        sa.Column(
-            "status", cloud_account_status, nullable=False, server_default="active"
-        ),
+        sa.Column("status", sa.String(20), nullable=False, server_default="active"),
         sa.Column("last_synced_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error_message", sa.Text, nullable=True),
         sa.UniqueConstraint(
@@ -190,7 +156,6 @@ def upgrade() -> None:
         "CREATE INDEX ix_metric_samples_resource_metric "
         "ON metric_samples (resource_id, metric_name);"
     )
-    # Monthly partitions across the demo window (May–Sept 2026) plus a default.
     for start, end, suffix in (
         ("2026-05-01", "2026-06-01", "2026_05"),
         ("2026-06-01", "2026-07-01", "2026_06"),
@@ -251,17 +216,12 @@ def upgrade() -> None:
             sa.ForeignKey("cloud_accounts.id", ondelete="CASCADE"),
             nullable=True,
         ),
-        sa.Column("agent", agent_type, nullable=False),
+        sa.Column("agent", sa.String(20), nullable=False),
         sa.Column("title", sa.String(255), nullable=False),
         sa.Column("description", sa.Text, nullable=False),
         sa.Column("estimated_saving_usd", sa.Numeric(12, 2), nullable=True),
         sa.Column("confidence", sa.Float, nullable=False),
-        sa.Column(
-            "status",
-            recommendation_status,
-            nullable=False,
-            server_default="pending",
-        ),
+        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         sa.Column("snoozed_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "affected_resource_ids",
@@ -346,7 +306,7 @@ def upgrade() -> None:
             sa.ForeignKey("chat_sessions.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("role", message_role, nullable=False),
+        sa.Column("role", sa.String(20), nullable=False),
         sa.Column("content", sa.Text, nullable=False),
         sa.Column("citations_json", postgresql.JSONB, nullable=True),
         sa.Column("tool_calls_json", postgresql.JSONB, nullable=True),
@@ -385,7 +345,7 @@ def upgrade() -> None:
     op.create_table(
         "agent_run_logs",
         *_base_columns(),
-        sa.Column("agent", agent_type, nullable=False),
+        sa.Column("agent", sa.String(20), nullable=False),
         sa.Column(
             "organization_id",
             postgresql.UUID(as_uuid=True),
@@ -394,9 +354,7 @@ def upgrade() -> None:
         ),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "status", agent_run_status, nullable=False, server_default="running"
-        ),
+        sa.Column("status", sa.String(20), nullable=False, server_default="running"),
         sa.Column(
             "recommendations_created", sa.Integer, nullable=False, server_default="0"
         ),
@@ -423,15 +381,3 @@ def downgrade() -> None:
     op.drop_table("cloud_accounts")
     op.drop_table("users")
     op.drop_table("organizations")
-
-    for name in (
-        "agent_run_status",
-        "message_role",
-        "recommendation_status",
-        "agent_type",
-        "cloud_account_status",
-        "cloud_provider",
-        "user_role",
-        "org_plan",
-    ):
-        op.execute(f"DROP TYPE IF EXISTS {name};")

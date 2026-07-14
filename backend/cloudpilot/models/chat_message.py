@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from cloudpilot.models.chat_session import ChatSession
 
 
-class MessageRole(str, enum.Enum):
+class MessageRole(enum.StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
@@ -36,7 +36,7 @@ class ChatMessage(BaseModel):
         nullable=False,
     )
     role: Mapped[MessageRole] = mapped_column(
-        SAEnum(MessageRole, name="message_role"), nullable=False
+        SAEnum(MessageRole, name="message_role", native_enum=False), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     citations_json: Mapped[list[dict[str, Any]] | None] = mapped_column(

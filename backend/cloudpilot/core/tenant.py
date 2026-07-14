@@ -15,9 +15,8 @@ import uuid
 from contextvars import ContextVar
 
 from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, with_loader_criteria
-
-from cloudpilot.database import AsyncSessionLocal
 
 # Holds the active organization id for the duration of a request / task.
 _current_org_id: ContextVar[uuid.UUID | None] = ContextVar("current_org_id", default=None)
@@ -64,7 +63,7 @@ class TenantContext:
 def _install_listener() -> None:
     """Register the global ORM execute listener on the session factory."""
 
-    @event.listens_for(AsyncSessionLocal.sync_session_class, "do_orm_execute")
+    @event.listens_for(AsyncSession.sync_session_class, "do_orm_execute")
     def _tenant_filter(state: ORMExecuteState) -> None:
         # Only constrain plain SELECTs; never touch writes or relationship loads.
         if not state.is_select or state.is_column_load or state.is_relationship_load:
