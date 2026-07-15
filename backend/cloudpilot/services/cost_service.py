@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,6 +107,19 @@ class CostService:
         month_start = today.replace(day=1)
         last_month_start = (month_start - timedelta(days=1)).replace(day=1)
 
+        # Region lives on the resource, not the billing row, so join through it. A
+        # billing row with no resource (rare) is bucketed as "unassigned" rather than
+        # dropped, so the region totals still sum to the provider totals.
+        region_by_resource = dict(
+            (
+                await self.db.execute(
+                    select(Resource.id, Resource.region).where(
+                        Resource.cloud_account_id.in_(account_ids)
+                    )
+                )
+            ).all()
+        )
+
         rows = (
             await self.db.execute(
                 select(
@@ -114,6 +127,7 @@ class CostService:
                     BillingEntry.service,
                     BillingEntry.usage_date,
                     BillingEntry.cost_usd,
+                    BillingEntry.resource_id,
                 ).where(
                     BillingEntry.cloud_account_id.in_(account_ids),
                     BillingEntry.usage_date >= last_month_start,
@@ -126,12 +140,13 @@ class CostService:
         svc_last: dict[tuple[str, CloudProvider], float] = defaultdict(float)
         region_total: dict[str, float] = defaultdict(float)
 
-        for acc_id, service, usage_date, cost in rows:
+        for acc_id, service, usage_date, cost, resource_id in rows:
             provider = accounts[acc_id].provider
             c = float(cost)
             if usage_date >= month_start:
                 prov_total[provider] += c
                 svc_mtd[(service, provider)] += c
+                region_total[region_by_resource.get(resource_id) or "unassigned"] += c
             else:
                 svc_last[(service, provider)] += c
 
