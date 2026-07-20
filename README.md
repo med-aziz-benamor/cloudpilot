@@ -172,6 +172,7 @@ cloudpilot/
 | [`docs/deployment.md`](docs/deployment.md) | Docker Compose (dev + prod), Kubernetes, Azure Terraform, CI/CD, health and observability |
 | [`docs/development.md`](docs/development.md) | Local setup, running tests, migrations, refreshing the rate card, adding a provider or an agent, code style |
 | [`docs/session-report-2026-07-14.md`](docs/session-report-2026-07-14.md) | Dated engineering record of the pricing-grounded-simulator rework and the bugs it surfaced |
+| [`docs/session-report-2026-07-20.md`](docs/session-report-2026-07-20.md) | Security/agent hardening pass — tenant filter fix, anomaly recalibration, RAG cache fixes |
 
 ---
 
@@ -273,7 +274,8 @@ listed so nobody discovers them the hard way:
 |------|--------|
 | Demo mode (`DEMO_MODE=true`) | ✅ Complete — the intended way to run this today |
 | Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
-| Auth, RBAC, tenant isolation, audit chain | ✅ Implemented; production boot is guarded against placeholder secrets |
+| Auth, RBAC, audit chain | ✅ Implemented; production boot is guarded against placeholder secrets |
+| Tenant isolation | ✅ Covered by tests both directions. Note the ORM filter only guards entities carrying `organization_id` — `resources`/`billing_entries` rely on service-level scoping. See [security.md](docs/security.md#what-layer-2-does-not-cover) |
 | Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
 | Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
 | Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API or UI, seeder only |

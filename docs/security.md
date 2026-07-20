@@ -46,9 +46,29 @@ Cloud providers           read-only IAM roles
 
 Roles: `admin` > `analyst` > `viewer`. The permission matrix lives in `core/rbac.py`.
 Layer 1 is the `require_permission` dependency. Layer 2 is the SQLAlchemy
-`do_orm_execute` listener (`core/tenant.py`) which appends
-`WHERE organization_id = :current_org` to every SELECT — bypassing layer 1 still cannot
-leak another tenant's data.
+`do_orm_execute` listener (`core/tenant.py`), which appends
+`WHERE organization_id = :current_org` to every SELECT against an entity that
+**declares an `organization_id` column** — and, since 2026-07-20, to *every* such
+entity in a statement rather than only the first (it used to `break` after one, so a
+multi-entity select left the trailing side unfiltered).
+
+### What layer 2 does not cover
+
+The listener can only filter entities that carry the column. Seven models do:
+`user`, `cloud_account`, `recommendation`, `chat_session`, `forecast_snapshot`,
+`agent_run_log`, `audit_log`.
+
+`resource`, `billing_entry` and `metric_sample` — the three largest tables — do **not**.
+They are scoped transitively (`resource.cloud_account_id → cloud_account.organization_id`),
+which the listener cannot see. Their isolation rests entirely on services resolving the
+caller's `account_ids` first and constraining on them, which `CostService` and
+`ResourceService` do correctly. Treat that as a single layer, not defence in depth,
+until `organization_id` is denormalised onto those tables.
+
+The scheduler is a third case: it has no request lifecycle, so nothing binds the
+`ContextVar` and the listener is a no-op there by design. The agents take
+`organization_id` as a parameter and filter on it explicitly; see
+`tests/test_scheduler_isolation.py`.
 
 ## Startup secrets guard
 
