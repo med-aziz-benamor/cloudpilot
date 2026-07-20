@@ -32,7 +32,20 @@ _forecast_agent = ForecastAgent()
 
 
 async def _run_for_all_orgs(agent) -> None:
-    """Execute an agent for every organization in its own transaction."""
+    """Execute an agent for every organization in its own transaction.
+
+    Note on tenant isolation: this process has no request lifecycle, so nothing
+    binds the ``ContextVar`` in ``core/tenant.py`` and the ORM tenant filter is a
+    no-op for every query made here. That is deliberate. Isolation in the
+    scheduler comes from ``organization_id`` being passed explicitly into
+    ``agent.run()``, which filters on it directly — an implicit, ambient org would
+    be the wrong mechanism in a loop that legitimately spans all tenants.
+
+    Do not "fix" this by wrapping the loop in a ``TenantContext``: it would add a
+    second, invisible source of truth without removing the need for the explicit
+    filtering, and the agents would still be correct without it.
+    ``tests/test_scheduler_isolation.py`` locks the current behaviour in.
+    """
     async with AsyncSessionLocal() as db:
         org_ids = (await db.execute(select(Organization.id))).scalars().all()
     for org_id in org_ids:
