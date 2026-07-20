@@ -71,18 +71,26 @@ def _install_listener() -> None:
         org_id = _current_org_id.get()
         if org_id is None:
             return
-        # Apply the criterion to every mapped entity that declares organization_id.
+        # Apply the criterion to EVERY mapped entity that declares organization_id.
+        # Stopping at the first one (as this used to) left every later org-scoped
+        # entity in the statement unfiltered — a two-entity select bound to org A
+        # would happily return org B's rows on the trailing side. An FK-correlated
+        # join masks that, which is why it went unnoticed.
+        seen: set[type] = set()
         for mapper in state.all_mappers:
-            if "organization_id" in mapper.columns:
-                entity = mapper.entity
-                state.statement = state.statement.options(
-                    with_loader_criteria(
-                        entity,
-                        lambda cls: cls.organization_id == org_id,
-                        include_aliases=True,
-                    )
+            if "organization_id" not in mapper.columns:
+                continue
+            entity = mapper.entity
+            if entity in seen:
+                continue
+            seen.add(entity)
+            state.statement = state.statement.options(
+                with_loader_criteria(
+                    entity,
+                    lambda cls: cls.organization_id == org_id,
+                    include_aliases=True,
                 )
-                break
+            )
 
 
 _install_listener()
