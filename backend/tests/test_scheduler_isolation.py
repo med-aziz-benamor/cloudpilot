@@ -52,7 +52,9 @@ async def session_factory():
     eng = create_async_engine(TEST_DB_URL, future=True, poolclass=NullPool)
     tables = [Base.metadata.tables[t] for t in _TABLES]
     async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all, tables=tables)
+        # Drop the whole schema, not just our subset: the DB-backed test files share
+        # one database, and a table left by another file can hold an FK onto ours.
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all, tables=tables)
     yield async_sessionmaker(bind=eng, expire_on_commit=False)
     await eng.dispose()

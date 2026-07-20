@@ -45,14 +45,14 @@ async def engine():
     # loop, and a pooled connection created on a previous loop cannot be reused.
     eng = create_async_engine(TEST_DB_URL, future=True, poolclass=NullPool)
     async with eng.begin() as conn:
-        # Only the tables these tests touch. metric_samples is range-partitioned and
-        # is created by Alembic, not metadata.create_all.
         tables = [
             Organization.__table__,
             CloudAccount.__table__,
             Recommendation.__table__,
         ]
-        await conn.run_sync(Base.metadata.drop_all, tables=tables)
+        # Drop the whole schema, not just our subset: the DB-backed test files share
+        # one database, and a table left by another file can hold an FK onto ours.
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all, tables=tables)
     yield eng
     await eng.dispose()
