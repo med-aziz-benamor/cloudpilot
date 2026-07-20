@@ -74,6 +74,7 @@ async def _seed_idle_resource(db, node_count: int) -> uuid.UUID:
     db.add(account)
     await db.flush()
     resource = Resource(
+        organization_id=org.id,
         cloud_account_id=account.id,
         provider_resource_id=f"/rid/{node_count}",
         name=f"pool-{node_count}",

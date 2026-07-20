@@ -200,6 +200,7 @@ async def _seed_resources(
         account = accounts[provider]
         for sim in fleet_for(provider_key):
             res = Resource(
+                organization_id=account.organization_id,
                 cloud_account_id=account.id,
                 provider_resource_id=f"{provider_key}://acme/{sim.name}",
                 name=sim.name,
@@ -244,6 +245,7 @@ async def _seed_billing(
             total += cost
             db.add(
                 BillingEntry(
+                    organization_id=account.organization_id,
                     cloud_account_id=account.id,
                     resource_id=res.id,
                     usage_date=day,

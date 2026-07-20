@@ -28,8 +28,18 @@ class BillingEntry(BaseModel):
     __table_args__ = (
         Index("ix_billing_account_date", "cloud_account_id", "usage_date"),
         Index("ix_billing_resource_date", "resource_id", "usage_date"),
+        Index("ix_billing_org_date", "organization_id", "usage_date"),
     )
 
+    #: Denormalized from ``cloud_account.organization_id``. Redundant on purpose: the
+    #: tenant listener in ``core/tenant.py`` filters entities that declare this column,
+    #: and it cannot follow a join to find one. Without it this table is guarded only
+    #: by services remembering to scope their queries. Every write path must set it.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     cloud_account_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("cloud_accounts.id", ondelete="CASCADE"),

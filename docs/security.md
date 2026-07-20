@@ -52,23 +52,46 @@ Layer 1 is the `require_permission` dependency. Layer 2 is the SQLAlchemy
 entity in a statement rather than only the first (it used to `break` after one, so a
 multi-entity select left the trailing side unfiltered).
 
-### What layer 2 does not cover
+### What layer 2 covers
 
-The listener can only filter entities that carry the column. Seven models do:
+The listener can only filter entities that **carry** the column — it inspects mappers
+and cannot follow a join to find one. Nine models declare it:
+
 `user`, `cloud_account`, `recommendation`, `chat_session`, `forecast_snapshot`,
-`agent_run_log`, `audit_log`.
+`agent_run_log`, `audit_log`, and — since migration `004` — `resource` and
+`billing_entry`.
 
-`resource`, `billing_entry` and `metric_sample` — the three largest tables — do **not**.
-They are scoped transitively (`resource.cloud_account_id → cloud_account.organization_id`),
-which the listener cannot see. Their isolation rests entirely on services resolving the
-caller's `account_ids` first and constraining on them, which `CostService` and
-`ResourceService` do correctly. Treat that as a single layer, not defence in depth,
-until `organization_id` is denormalised onto those tables.
+Those last two are the platform's largest tables, and until `004` they carried no
+`organization_id` at all: they were scoped transitively through
+`cloud_account_id → cloud_accounts.organization_id`, which the listener cannot see.
+Their isolation therefore rested on services resolving the caller's `account_ids`
+first — correct, but a *single* layer. `004` denormalises the column onto both and
+backfills it from the owning cloud account, so the ORM guard now engages on them
+directly.
 
-The scheduler is a third case: it has no request lifecycle, so nothing binds the
-`ContextVar` and the listener is a no-op there by design. The agents take
+The redundancy is the point. A service that forgets to scope its query — or scopes it
+to the wrong tenant — still cannot read another organization's rows:
+`ResourceService.list_resources()` called with org A's id, under a context bound to a
+different org, returns zero rows rather than A's 50. `tests/test_tenant_isolation_resources.py`
+proves this with deliberately naive statements (`select(Resource)` with no manual
+`cloud_account_id` filter), so it exercises the listener rather than the service code
+that was already correct.
+
+#### Still uncovered
+
+`metric_sample` has no `organization_id`. It is scoped through `resource_id`, so the
+listener does not engage on it; isolation there is still single-layer, via callers
+constraining on resource ids they have already proven in-org (`RightSizingAgent._p95`,
+`ResourceService.get_resource`). Denormalising it is the obvious next step — it was
+left out of `004` to keep that migration scoped.
+
+#### The scheduler
+
+A deliberate third case: it has no request lifecycle, so nothing binds the
+`ContextVar` and the listener is a no-op for every query it makes. The agents take
 `organization_id` as a parameter and filter on it explicitly; see
-`tests/test_scheduler_isolation.py`.
+`tests/test_scheduler_isolation.py`. Do not wrap the scheduler loop in a
+`TenantContext` — it legitimately spans all tenants.
 
 ## Startup secrets guard
 

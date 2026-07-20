@@ -275,7 +275,7 @@ listed so nobody discovers them the hard way:
 | Demo mode (`DEMO_MODE=true`) | ✅ Complete — the intended way to run this today |
 | Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
 | Auth, RBAC, audit chain | ✅ Implemented; production boot is guarded against placeholder secrets |
-| Tenant isolation | ✅ Covered by tests both directions. Note the ORM filter only guards entities carrying `organization_id` — `resources`/`billing_entries` rely on service-level scoping. See [security.md](docs/security.md#what-layer-2-does-not-cover) |
+| Tenant isolation | ✅ Two independent layers (RBAC + ORM filter) over 9 models including `resources`/`billing_entries`. `metric_samples` is still single-layer. See [security.md](docs/security.md#what-layer-2-covers) |
 | Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
 | Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
 | Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API or UI, seeder only |

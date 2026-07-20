@@ -70,6 +70,7 @@ async def _sync_resources(
         res = by_pid.get(dto.provider_resource_id)
         if res is None:
             res = Resource(
+                organization_id=account.organization_id,
                 cloud_account_id=account.id,
                 provider_resource_id=dto.provider_resource_id,
             )
@@ -106,6 +107,7 @@ async def _sync_billing(
             resource_id = resources[dto.provider_resource_id].id
         db.add(
             BillingEntry(
+                organization_id=account.organization_id,
                 cloud_account_id=account.id,
                 resource_id=resource_id,
                 usage_date=dto.usage_date,

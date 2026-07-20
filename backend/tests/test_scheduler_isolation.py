@@ -85,6 +85,7 @@ async def _seed_org(
             cost = 500.0
         db.add(
             BillingEntry(
+                organization_id=org.id,
                 cloud_account_id=account.id,
                 usage_date=day,
                 service=service,
