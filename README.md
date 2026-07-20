@@ -83,10 +83,19 @@ Password: demo1234
 
 Or click **"Try Demo"** on the login page to log in instantly.
 
-`make seed` populates a fully realistic dataset: 1 organization (Acme Corp),
-3 cloud accounts, 50 resources, 90 days of billing data (with 2 deliberate anomalies),
-14 days of CPU/RAM metrics, 8 AI recommendations, and 3 chat sessions — so the platform
-is immediately interactive with **no cloud credentials required**.
+> **On a machine other than the original dev box**, the `ollama` service mounts a
+> hardcoded path that will not exist for you. Repoint that volume first — see
+> [Known issue in the development guide](docs/development.md#local-setup-step-by-step).
+
+`make seed` populates a fully realistic dataset with **no cloud credentials required**:
+1 organization (Acme Corp) on a $7,500/month budget, 3 cloud accounts, **50 resources**
+(22 Azure · 18 AWS · 10 GCP), **90 days** of billing priced from the real rate card
+(including 2 deliberate anomalies), **14 days** of CPU/RAM metrics, and 3 chat sessions.
+
+The **recommendations are not seeded** — after building the estate, `make seed` runs the
+real CostAgent, RightSizingAgent and ForecastAgent against it. However many findings the
+recommendations page shows, those are genuine agent output, so the count varies with the
+estate rather than being a fixed number. Same for the agent run logs on the admin page.
 
 ---
 
@@ -103,7 +112,8 @@ All configuration is environment-driven. Copy `.env.example` to `.env` and adjus
 | `FERNET_MASTER_KEY` | Credential encryption key | _generate; see below_ |
 | `DEMO_MODE` | Use mock data, no cloud creds needed | `true` |
 | `OLLAMA_BASE_URL` | Local LLM server | `http://ollama:11434` |
-| `OLLAMA_MODEL` | LLM model id | `qwen2.5:4b` |
+| `OLLAMA_MODEL` | LLM model id | `qwen2.5:3b` |
+| `LLM_TIMEOUT_SECONDS` | Give a CPU-bound local model room to finish | `180` |
 | `CHROMADB_HOST` / `CHROMADB_PORT` | Vector store | `chromadb` / `8000` |
 | `OPENAI_API_KEY` | Optional LLM fallback | _empty_ |
 | `AZURE_*` / `AWS_*` / `GCP_*` | Real cloud credentials | _empty (demo mode)_ |
@@ -133,7 +143,17 @@ See [`docs/api-reference.md`](docs/api-reference.md) for endpoint-by-endpoint de
 
 ```
 cloudpilot/
-├── backend/        FastAPI app — models, services, AI agents, cloud adapters
+├── backend/        FastAPI app
+│   └── cloudpilot/
+│       ├── api/v1/     routes (auth, cloud-accounts, resources, costs,
+│       │               recommendations, forecast, chat, admin)
+│       ├── services/   business logic — routes never touch the ORM
+│       ├── ai/         4 agents + RAG engine + LLM client
+│       ├── cloud/      one read-only adapter per provider
+│       ├── pricing/    published rate cards + provenance (see below)
+│       ├── simulation/ the simulated estate the rates are applied to
+│       ├── models/     SQLAlchemy models · schemas/ Pydantic v2
+│       └── core/       auth, RBAC, tenant filter, audit chain
 ├── frontend/       React + Vite SPA — premium macOS-style UI
 ├── infrastructure/ Kubernetes manifests, Terraform (Azure), Prometheus/Grafana
 ├── docs/           Architecture, API, security, deployment, development guides
@@ -142,17 +162,36 @@ cloudpilot/
 
 ---
 
+## Documentation
+
+| Guide | What's in it |
+|-------|--------------|
+| [`docs/architecture.md`](docs/architecture.md) | The five layers, request lifecycle, agent scheduling, how pricing feeds simulation, caching (and which caches are not built), technology rationale |
+| [`docs/api-reference.md`](docs/api-reference.md) | Every endpoint, permissions, error envelope, curl examples |
+| [`docs/security.md`](docs/security.md) | Trust boundaries, JWT/refresh design, RBAC + tenant filter, the startup secrets guard, credential encryption and key rotation, audit-log chain, incident runbook |
+| [`docs/deployment.md`](docs/deployment.md) | Docker Compose (dev + prod), Kubernetes, Azure Terraform, CI/CD, health and observability |
+| [`docs/development.md`](docs/development.md) | Local setup, running tests, migrations, refreshing the rate card, adding a provider or an agent, code style |
+| [`docs/session-report-2026-07-14.md`](docs/session-report-2026-07-14.md) | Dated engineering record of the pricing-grounded-simulator rework and the bugs it surfaced |
+
+---
+
 ## Makefile Targets
 
 ```
-make dev          # Start the full stack in dev mode
+make dev          # Start the full stack in dev mode (hot reload)
+make up           # Start the stack detached
+make down         # Stop the stack
 make build        # Build all Docker images
-make test         # Run backend + frontend tests
-make lint         # ruff + mypy + eslint
 make migrate      # Run Alembic migrations
 make seed         # Seed demo data
+make pricing      # Refresh the rate card (Azure API + published list prices)
+make pricing-deep # Also fetch the large AWS offer files (slow)
+make test         # Run backend + frontend tests
+make lint         # ruff + mypy + eslint
+make typecheck    # mypy + tsc
+make format       # ruff format + eslint --fix
 make logs         # Tail all service logs
-make clean        # Remove containers + volumes
+make clean        # Remove containers + volumes (DESTROYS data)
 make shell-be     # Bash into the backend container
 make shell-db     # psql into Postgres
 make docs         # Serve docs locally
@@ -222,6 +261,26 @@ When implementing them, the entry points are:
 - **GCP** → the BigQuery billing export and Cloud Monitoring `list_time_series()`.
 
 CloudPilot is **read-only by design** — it never creates, updates or deletes cloud resources.
+
+---
+
+## Project Status
+
+Everything in the Quick Start works end to end in demo mode. These are the honest gaps —
+listed so nobody discovers them the hard way:
+
+| Area | Status |
+|------|--------|
+| Demo mode (`DEMO_MODE=true`) | ✅ Complete — the intended way to run this today |
+| Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
+| Auth, RBAC, tenant isolation, audit chain | ✅ Implemented; production boot is guarded against placeholder secrets |
+| Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
+| Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
+| Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API or UI, seeder only |
+| Dashboard aggregate caching | ❌ `CACHE_DASHBOARD_TTL` is defined but unused; cost queries hit Postgres every request |
+| `make dev` on a machine other than the original | ⚠️ The `ollama` volume mount is a hardcoded local path — repoint it first |
+| Backend tests on the host | ⚠️ Need Python 3.11; a newer interpreter fails at collection. Run them in the container |
+| Pricing provenance in the UI | ⚠️ Tracked per-rate in the backend, not yet surfaced on screen |
 
 ---
 

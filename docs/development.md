@@ -11,6 +11,20 @@
    ```bash
    make dev      # postgres, redis, chromadb, ollama, backend, scheduler, frontend
    ```
+
+   > **Known issue — `make dev` is not yet portable.** The `ollama` service in
+   > `docker-compose.yml` mounts a hardcoded, machine-specific path
+   > (`/Volumes/AzizBNA SSD/ollama/models`) that exists only on the original dev
+   > machine, and the space in it is unquoted. On any other machine, point that volume
+   > at a named volume or a local directory before starting:
+   >
+   > ```yaml
+   > volumes:
+   >   - ollama_models:/root/.ollama/models
+   > ```
+   >
+   > Then pull the models once the stack is up:
+   > `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
 3. **Seed demo data** (second terminal)
    ```bash
    make seed
@@ -40,14 +54,25 @@ pnpm dev
 ## Running tests
 
 ```bash
-# Backend (unit tests run with no DB/infra needed)
-cd backend && poetry run pytest -q
+# Backend — run inside the container (this is the supported path)
+docker compose exec backend pytest -q
 
 # Frontend
 cd frontend && pnpm test --run
 
-# Everything
+# Everything (backend in-container + frontend on host)
 make test
+```
+
+The backend tests need no database or running infra, but they **do** need the project's
+dependency set on **Python 3.11** (`pyproject.toml` pins `^3.11`, mypy targets 3.11).
+Running `poetry run pytest` on a host with a newer interpreter fails at collection —
+Python 3.14 has no wheels for `scikit-learn`/`prophet`, so `poetry install` never
+completes and every test module dies on a missing import. Use the container, or create
+the venv against a real 3.11:
+
+```bash
+cd backend && poetry env use 3.11 && poetry install && poetry run pytest -q
 ```
 
 ## Linting & types
@@ -77,6 +102,25 @@ Schema changes go through Alembic only — never hand-written SQL against the DB
 3. Add the provider to the `CloudProvider` enum + a new Alembic migration.
 4. Add a mock blueprint in `utils/mock_data.py` and wizard fields in
    `frontend/src/pages/settings/ConnectCloudPage.tsx`.
+
+## Refreshing the pricing snapshot
+
+Costs are `published_rate × simulated_usage`, and the rate card is a committed snapshot
+at `backend/cloudpilot/pricing/data/pricing_snapshot.json` — not a live lookup. Refresh
+it when rates drift:
+
+```bash
+make pricing        # Azure Retail Prices API (live) + AWS/GCP published list prices
+make pricing-deep   # also pulls AWS's bulk offer files (tens of MB, slow)
+```
+
+Both are keyless — no cloud account or spend required. Commit the regenerated snapshot:
+a pinned rate card is what makes the seeded dataset reproducible. Re-seed afterwards
+(`make seed`) so billing rows are recomputed against the new rates.
+
+Adding a SKU means adding it to the snapshot **and**, if right-sizing should be able to
+recommend shrinking it, adding a downsize pair in `pricing/catalog.py`. Each hop must be
+a genuine halving within the same instance family, or the "saving" is meaningless.
 
 ## Adding a new AI agent
 

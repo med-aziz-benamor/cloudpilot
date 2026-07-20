@@ -115,6 +115,11 @@ curl -X PATCH localhost:8000/api/v1/recommendations/$ID/status \
 Reads the latest persisted Prophet snapshot (30/60/90). Returns `404` if the
 ForecastAgent has not produced one yet.
 
+> **Budget alerts have no API yet.** ForecastAgent raises a budget alert against
+> `organizations.monthly_budget_usd` (migration `003`), but that column is currently
+> only writable by the seeder — there is no endpoint or Settings UI to set it. An org
+> with a `NULL` budget simply gets no alert. Exposing it is a known open item.
+
 ---
 
 ## Chat (Cloud Advisor)

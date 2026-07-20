@@ -50,6 +50,24 @@ Layer 1 is the `require_permission` dependency. Layer 2 is the SQLAlchemy
 `WHERE organization_id = :current_org` to every SELECT — bypassing layer 1 still cannot
 leak another tenant's data.
 
+## Startup secrets guard
+
+`Settings._guard_secrets` (a Pydantic `model_validator` in `config.py`) refuses to
+construct the settings object — so the app cannot boot — when `APP_ENV=production` and
+any of `JWT_SECRET`, `APP_SECRET_KEY` or `FERNET_MASTER_KEY` is empty or still at its
+placeholder value. The error names exactly which ones are wrong.
+
+This closes a specific hole: an empty `FERNET_MASTER_KEY` falls back to a key derived
+from a **source-code constant**, so anyone holding the repo could decrypt every stored
+cloud credential. Failing to start is the correct response.
+
+Separately, a *malformed* `FERNET_MASTER_KEY` is rejected in **every** environment,
+including dev — a bad key is never intentional, and without this check it surfaces much
+later as an opaque error deep inside credential encryption.
+
+Dev and demo still boot on the placeholders; the guard only tightens in production.
+Covered by `backend/tests/test_config.py`.
+
 ## Credential encryption
 
 Cloud credentials are Fernet-encrypted (AES-128-CBC + HMAC) before storage via

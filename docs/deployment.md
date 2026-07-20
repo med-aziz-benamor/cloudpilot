@@ -11,7 +11,12 @@ make seed         # seed the demo dataset (second terminal)
 Services: postgres, redis, chromadb, ollama, backend, scheduler, frontend,
 prometheus, grafana. Frontend at `:5173`, API at `:8000`, Grafana at `:3001`.
 
-> First run pulls the Ollama model. To pre-pull: `docker compose exec ollama ollama pull qwen2.5:4b && docker compose exec ollama ollama pull nomic-embed-text`.
+> First run pulls the Ollama model. To pre-pull:
+> `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
+>
+> Use the exact tag `qwen2.5:3b` — `qwen2.5:4b` does not exist in the Ollama registry.
+> The Chat page degrades to a canned fallback rather than erroring if the model is
+> missing, so a wrong tag looks like a bad answer, not a failure.
 
 ## Production (Docker Compose + nginx)
 
@@ -23,6 +28,16 @@ Differences from dev: built images (no source mounts), `uvicorn --workers 4`,
 nginx terminating TLS in front (`nginx.conf`), `DEBUG=false`. Provide secrets via
 `.env` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, `FERNET_MASTER_KEY`,
 `GF_SECURITY_ADMIN_PASSWORD`) and TLS certs in `./certs`.
+
+> **`APP_ENV=production` will not boot on placeholder secrets.** `JWT_SECRET`,
+> `APP_SECRET_KEY` and `FERNET_MASTER_KEY` must each be set to a real value or startup
+> fails with a message naming the offenders — see [`security.md`](security.md#startup-secrets-guard).
+> This is intentional: an unset `FERNET_MASTER_KEY` would fall back to a key derived
+> from a source-code constant. Generate the Fernet key with:
+>
+> ```bash
+> python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+> ```
 
 ## Kubernetes
 
