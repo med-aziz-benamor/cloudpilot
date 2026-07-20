@@ -173,6 +173,7 @@ cloudpilot/
 | [`docs/development.md`](docs/development.md) | Local setup, running tests, migrations, refreshing the rate card, adding a provider or an agent, code style |
 | [`docs/session-report-2026-07-14.md`](docs/session-report-2026-07-14.md) | Dated engineering record of the pricing-grounded-simulator rework and the bugs it surfaced |
 | [`docs/session-report-2026-07-20.md`](docs/session-report-2026-07-20.md) | Security/agent hardening pass — tenant filter fix, anomaly recalibration, RAG cache fixes |
+| [`docs/session-report-2026-07-20b.md`](docs/session-report-2026-07-20b.md) | Denormalizing `organization_id` onto `resources`/`billing_entries` to restore two-layer tenant isolation |
 
 ---
 
