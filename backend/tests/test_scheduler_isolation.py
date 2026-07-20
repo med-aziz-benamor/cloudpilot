@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -28,7 +28,7 @@ from cloudpilot.database import Base
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.cloud_account import CloudAccount, CloudProvider
 from cloudpilot.models.organization import Organization
-from cloudpilot.models.recommendation import AgentType, Recommendation
+from cloudpilot.models.recommendation import Recommendation
 
 TEST_DB_URL = os.environ.get("CLOUDPILOT_TEST_DB")
 
@@ -60,7 +60,9 @@ async def session_factory():
     await eng.dispose()
 
 
-async def _seed_org(db, name: str, service: str, spike_day_offset: int) -> tuple[uuid.UUID, uuid.UUID]:
+async def _seed_org(
+    db, name: str, service: str, spike_day_offset: int
+) -> tuple[uuid.UUID, uuid.UUID]:
     """One org with 60 days of flat spend and a single 5x spike."""
     org = Organization(name=name)
     db.add(org)

@@ -42,6 +42,19 @@ class LLMClient:
 
     async def embed(self, text: str) -> list[float]:
         """Return an embedding vector for ``text`` via the Ollama embed model."""
+        vector, _ = await self.embed_with_status(text)
+        return vector
+
+    async def embed_with_status(self, text: str) -> tuple[list[float], bool]:
+        """Embed ``text``, reporting whether the vector is real.
+
+        Returns ``(vector, is_real)``. On failure the hash fallback keeps the demo
+        working offline, but the vector is meaningless for similarity — it exists so
+        callers do not crash, not so they can trust the result. Any caller that
+        *caches* what it derives from an embedding must check the flag, or a
+        transient Ollama outage gets frozen into that cache for the process
+        lifetime. See ``rag.engine.retrieve``.
+        """
         try:
             async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
                 resp = await client.post(
@@ -49,10 +62,10 @@ class LLMClient:
                     json={"model": settings.OLLAMA_EMBED_MODEL, "prompt": text},
                 )
                 resp.raise_for_status()
-                return resp.json()["embedding"]
+                return resp.json()["embedding"], True
         except Exception as exc:
             logger.warning("Embedding failed, using hash fallback: {}", exc)
-            return self._hash_embedding(text)
+            return self._hash_embedding(text), False
 
     async def _ollama_generate(
         self, messages: list[dict[str, str]], tools: list[dict[str, Any]] | None

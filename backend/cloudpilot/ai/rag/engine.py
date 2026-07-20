@@ -1,7 +1,9 @@
 """RAG engine — ChromaDB vector store + nomic-embed-text embeddings + retrieval.
 
-Uses an in-process LRU cache (100 entries) over query results. Falls back to an
-in-memory store when ChromaDB is unreachable so the demo never hard-fails.
+Caches query results in-process, capped at 100 entries with FIFO eviction (not
+true LRU — a hit does not refresh an entry's position). Only confident results are
+cached; see :meth:`RAGEngine.retrieve`. Falls back to an in-memory store when
+ChromaDB is unreachable so the demo never hard-fails.
 """
 
 from __future__ import annotations
@@ -13,6 +15,28 @@ from loguru import logger
 
 from cloudpilot.ai.llm import LLMClient
 from cloudpilot.config import settings
+
+#: Drop retrieved chunks further than this from the query (cosine distance; the
+#: collection is created with ``hnsw:space=cosine``).
+#:
+#: Without it, ``retrieve`` returns the top-k *regardless of how bad k is*, and the
+#: chat endpoint renders whatever comes back as citation chips. Asking the Advisor
+#: "What is the capital of France?" produced five authoritative-looking sources
+#: about AKS node pools.
+#:
+#: Measured against the seeded corpus (nomic-embed-text), best-match distance by
+#: query:
+#:
+#:     Is my Azure AKS cluster correctly sized?   0.3097
+#:     Why did my Azure costs spike last month?   0.2546
+#:     How do I reduce S3 storage costs?          0.4231
+#:     asdfgh qwerty zxcvbn                       0.5567
+#:     What is the capital of France?             0.6587
+#:
+#: On-domain questions sit well below 0.5 and unrelated ones well above, so 0.55
+#: falls in the observed gap. It is deliberately loose: the job is to reject
+#: questions the corpus cannot speak to at all, not to fine-tune ranking.
+MAX_COSINE_DISTANCE = 0.55
 
 
 class RAGEngine:
@@ -72,29 +96,58 @@ class RAGEngine:
         return len(ids)
 
     async def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
-        """Return the top-k most similar chunks for a query."""
+        """Return the top-k most similar chunks for a query.
+
+        Only a *confident* result is cached. Two degraded paths must never be
+        memoised, because the cache has no TTL and would serve the degraded answer
+        for the rest of the process lifetime:
+
+        * the embedding fell back to the hash stub (Ollama unreachable), so the
+          query vector is meaningless and whatever it matched is noise;
+        * retrieval produced nothing at all — a Chroma outage and an empty
+          collection are indistinguishable here from "no relevant documents", and
+          freezing that in means the Advisor answers ungrounded until restart.
+
+        Both used to be cached unconditionally.
+        """
         cached = _cached_retrieve(query, k)
         if cached is not None:
             return cached
 
-        query_emb = await self.llm.embed(query)
+        query_emb, embedding_ok = await self.llm.embed_with_status(query)
         collection = self._get_collection()
         results: list[dict[str, Any]] = []
+        retrieval_ok = True
 
         if collection is not None:
             try:
                 res = collection.query(query_embeddings=[query_emb], n_results=k)
                 docs = res.get("documents", [[]])[0]
                 metas = res.get("metadatas", [[]])[0]
-                for text, md in zip(docs, metas, strict=False):
+                dists = (res.get("distances") or [[]])[0]
+                for text, md, dist in zip(
+                    docs, metas, dists or [0.0] * len(docs), strict=False
+                ):
+                    if dist > MAX_COSINE_DISTANCE:
+                        continue
                     results.append({"text": text, **md})
             except Exception as exc:
                 logger.warning("Chroma query failed: {}", exc)
+                retrieval_ok = False
 
         if not results and self._memory_store:
             results = self._memory_score(query_emb, k)
 
-        _store_in_cache(query, k, results)
+        if embedding_ok and retrieval_ok and results:
+            _store_in_cache(query, k, results)
+        else:
+            logger.debug(
+                "RAG: not caching degraded retrieval "
+                "(embedding_ok={}, retrieval_ok={}, hits={})",
+                embedding_ok,
+                retrieval_ok,
+                len(results),
+            )
         return results
 
     def _memory_score(self, query_emb: list[float], k: int) -> list[dict[str, Any]]:
@@ -121,7 +174,7 @@ class RAGEngine:
         return len(self._memory_store)
 
 
-# Module-level LRU cache (keyed by query+k) — 100 entries per the caching strategy.
+# Module-level query cache (keyed by query+k) — 100 entries, FIFO eviction.
 _cache: dict[tuple[str, int], list[dict[str, Any]]] = {}
 
 
