@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     # Brute-force protection
     LOGIN_MAX_ATTEMPTS_PER_IP: int = 5
     LOGIN_WINDOW_SECONDS: int = 300
+    LOGIN_MAX_ATTEMPTS_PER_EMAIL: int = 10
     LOGIN_LOCKOUT_SECONDS: int = 900
 
     # ─── AI ────────────────────────────────────────────────
