@@ -83,10 +83,6 @@ Password: demo1234
 
 Or click **"Try Demo"** on the login page to log in instantly.
 
-> **On a machine other than the original dev box**, the `ollama` service mounts a
-> hardcoded path that will not exist for you. Repoint that volume first — see
-> [Known issue in the development guide](docs/development.md#local-setup-step-by-step).
-
 `make seed` populates a fully realistic dataset with **no cloud credentials required**:
 1 organization (Acme Corp) on a $7,500/month budget, 3 cloud accounts, **50 resources**
 (22 Azure · 18 AWS · 10 GCP), **90 days** of billing priced from the real rate card
@@ -276,13 +272,13 @@ listed so nobody discovers them the hard way:
 |------|--------|
 | Demo mode (`DEMO_MODE=true`) | ✅ Complete — the intended way to run this today |
 | Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
-| Auth, RBAC, audit chain | ✅ Implemented; production boot is guarded against placeholder secrets |
+| Auth, RBAC, audit chain | ✅ Implemented and tested; production boot is guarded against placeholder secrets. Brute-force lockout, IP-spoofing and timing-side-channel fixes landed 2026-08-25 — see the session report |
 | Tenant isolation | ✅ Two independent layers (RBAC + ORM filter) over 9 models including `resources`/`billing_entries`. `metric_samples` is still single-layer. See [security.md](docs/security.md#what-layer-2-covers) |
 | Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
 | Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
-| Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API or UI, seeder only |
+| Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API. The forecast page shows it as read-only rather than a decorative editable field |
 | Dashboard aggregate caching | ❌ `CACHE_DASHBOARD_TTL` is defined but unused; cost queries hit Postgres every request |
-| `make dev` on a machine other than the original | ⚠️ The `ollama` volume mount is a hardcoded local path — repoint it first |
+| `make dev` on a machine other than the original | ✅ Fixed 2026-08-25 — the `ollama` volume is now a named Docker volume |
 | Backend tests on the host | ⚠️ Need Python 3.11; a newer interpreter fails at collection. Run them in the container |
 | Pricing provenance in the UI | ⚠️ Tracked per-rate in the backend, not yet surfaced on screen |
 

@@ -60,7 +60,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - /Volumes/AzizBNA SSD/ollama/models:/root/.ollama/models
+      - ollama_models:/root/.ollama/models
     environment:
       OLLAMA_HOST: 0.0.0.0
     restart: unless-stopped
@@ -164,3 +164,4 @@ volumes:
   redis_data:
   chroma_data:
   grafana_data:
+  ollama_models:

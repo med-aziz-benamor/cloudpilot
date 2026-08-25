@@ -12,19 +12,10 @@
    make dev      # postgres, redis, chromadb, ollama, backend, scheduler, frontend
    ```
 
-   > **Known issue — `make dev` is not yet portable.** The `ollama` service in
-   > `docker-compose.yml` mounts a hardcoded, machine-specific path
-   > (`/Volumes/AzizBNA SSD/ollama/models`) that exists only on the original dev
-   > machine, and the space in it is unquoted. On any other machine, point that volume
-   > at a named volume or a local directory before starting:
-   >
-   > ```yaml
-   > volumes:
-   >   - ollama_models:/root/.ollama/models
-   > ```
-   >
-   > Then pull the models once the stack is up:
-   > `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
+   The `ollama` service stores its models in a named Docker volume
+   (`ollama_models`), so this works unmodified on any machine. Pull the models
+   once the stack is up:
+   `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
 3. **Seed demo data** (second terminal)
    ```bash
    make seed
