@@ -171,6 +171,7 @@ cloudpilot/
 | [`docs/session-report-2026-07-20.md`](docs/session-report-2026-07-20.md) | Security/agent hardening pass — tenant filter fix, anomaly recalibration, RAG cache fixes |
 | [`docs/session-report-2026-07-20b.md`](docs/session-report-2026-07-20b.md) | Denormalizing `organization_id` onto `resources`/`billing_entries` to restore two-layer tenant isolation |
 | [`docs/session-report-2026-08-05.md`](docs/session-report-2026-08-05.md) | Status audit: zero commits since 20 July, 116 tests still passing, `make seed` still not re-run, RBAC has no test coverage |
+| [`docs/session-report-2026-08-25.md`](docs/session-report-2026-08-25.md) | Demo-readiness hardening pass — auth/RBAC security fixes, RBAC test coverage added, and four Cloud Advisor crash bugs found by driving the app in a real browser |
 
 ---
 
