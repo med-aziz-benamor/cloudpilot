@@ -201,7 +201,8 @@ export interface ForecastResponse {
   horizon_days: number;
   current_mtd_usd: number;
   projected_month_end_usd: number;
-  budget_usd: number;
+  /** null when the tenant has not set a monthly budget. */
+  budget_usd: number | null;
   over_budget: boolean;
   overrun_pct: number;
   next_90d_usd: number;
