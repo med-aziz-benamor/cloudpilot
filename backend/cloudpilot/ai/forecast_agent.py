@@ -33,6 +33,13 @@ from cloudpilot.models.recommendation import (
 #: forecast that lands a rounding error over budget does not page anyone.
 _OVERRUN_TRIGGER = 1.10
 
+#: How much billing history to load. Deliberately not CostAgent's 60-day
+#: _LOOKBACK_DAYS: Prophet's weekly-seasonality fit and this module's own
+#: "90+ days" premise want more history than that, so this is sized to cover a
+#: full seasonal cycle (just over a year) rather than reusing a shorter
+#: constant sized for a different agent's needs.
+_LOOKBACK_DAYS = 400
+
 
 class ForecastAgent(AgentBase):
     name = "ForecastAgent"
@@ -139,7 +146,14 @@ class ForecastAgent(AgentBase):
 
         today = date.today()
         days_left = (self._month_end(today) - today).days
-        mtd = float(df[df["ds"].apply(lambda d: d.month == today.month)]["y"].sum())
+        # Both month AND year: matching on month alone means that once an org
+        # has more than 12 months of billing history, "month-to-date" silently
+        # sums cost from every past year sharing today's month number too.
+        mtd = float(
+            df[df["ds"].apply(lambda d: d.month == today.month and d.year == today.year)][
+                "y"
+            ].sum()
+        )
 
         if days_left > 0:
             future = model.make_future_dataframe(periods=days_left)
@@ -204,10 +218,12 @@ class ForecastAgent(AgentBase):
         )
         if not account_ids:
             return {}
+        since = date.today() - timedelta(days=_LOOKBACK_DAYS)
         rows = (
             (await db.execute(
                 select(BillingEntry.usage_date, BillingEntry.cost_usd).where(
-                    BillingEntry.cloud_account_id.in_(account_ids)
+                    BillingEntry.cloud_account_id.in_(account_ids),
+                    BillingEntry.usage_date >= since,
                 )
             )).all()
         )
