@@ -92,11 +92,11 @@ async def _seed_idle_resource(db, node_count: int) -> uuid.UUID:
     for hour in range(48):
         ts = now - timedelta(hours=hour)
         db.add(MetricSample(
-            resource_id=resource.id, metric_name="cpu_percent",
+            organization_id=org.id, resource_id=resource.id, metric_name="cpu_percent",
             timestamp=ts, value=8.0, unit="percent",
         ))
         db.add(MetricSample(
-            resource_id=resource.id, metric_name="memory_percent",
+            organization_id=org.id, resource_id=resource.id, metric_name="memory_percent",
             timestamp=ts, value=15.0, unit="percent",
         ))
     return org.id

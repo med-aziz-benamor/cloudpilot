@@ -267,6 +267,7 @@ async def _seed_metrics(db, resources: dict[str, tuple[Resource, FleetResource]]
         for metric_name, ts, value, unit in metric_samples(sim, today):
             db.add(
                 MetricSample(
+                    organization_id=res.organization_id,
                     resource_id=res.id,
                     metric_name=metric_name,
                     timestamp=ts,

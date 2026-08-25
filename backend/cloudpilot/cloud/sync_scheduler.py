@@ -138,6 +138,7 @@ async def _sync_metrics(db: AsyncSession, adapter, resources: dict[str, Resource
             for s in samples:
                 db.add(
                     MetricSample(
+                        organization_id=res.organization_id,
                         resource_id=res.id,
                         metric_name=s.metric_name,
                         timestamp=s.timestamp,
