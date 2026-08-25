@@ -102,7 +102,7 @@ class CostAgent(AgentBase):
 
             for idx in flagged:
                 anomaly_date = dates[idx]
-                key = (service, anomaly_date.isoformat())
+                key = (str(account_id), service, anomaly_date.isoformat())
                 if key in existing:
                     continue
                 actual = float(values[idx])
@@ -176,7 +176,7 @@ class CostAgent(AgentBase):
 
     async def _pending_anomaly_dates(
         self, db: AsyncSession, organization_id: uuid.UUID
-    ) -> set[tuple[str, str]]:
+    ) -> set[tuple[str, str, str]]:
         rows = (
             (await db.execute(
                 select(Recommendation).where(
@@ -186,9 +186,13 @@ class CostAgent(AgentBase):
                 )
             )).scalars().all()
         )
-        out: set[tuple[str, str]] = set()
+        # Scoped by account (via the row's own cloud_account_id column, not
+        # metadata_json) as well as service+date — otherwise two accounts with
+        # an anomaly in the same service on the same day collide, and the
+        # second account's real anomaly is silently dropped as a "duplicate".
+        out: set[tuple[str, str, str]] = set()
         for r in rows:
             md = r.metadata_json or {}
             if md.get("service") and md.get("anomaly_date"):
-                out.add((md["service"], md["anomaly_date"]))
+                out.add((str(r.cloud_account_id), md["service"], md["anomaly_date"]))
         return out
