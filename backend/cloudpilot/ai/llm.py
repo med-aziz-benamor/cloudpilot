@@ -34,11 +34,22 @@ class LLMClient:
         model is unreachable (keeps the demo resilient offline)."""
         try:
             if self.provider == "openai":
-                return await self._openai_generate(messages, tools)
-            return await self._ollama_generate(messages, tools)
+                answer = await self._openai_generate(messages, tools)
+            else:
+                answer = await self._ollama_generate(messages, tools)
         except Exception as exc:
             logger.warning("LLM generation failed ({}), using fallback: {}", self.provider, exc)
             return self._fallback(messages)
+
+        if not answer:
+            # A successful call with no usable content — e.g. a tool-calling
+            # model responding with `content: null` because it wants to call a
+            # tool we don't execute. This is not an exception, so the except
+            # branch above never sees it; without this guard callers like
+            # ArchitectAgent._build_citations receive None and crash.
+            logger.warning("LLM returned an empty response ({}), using fallback", self.provider)
+            return self._fallback(messages)
+        return answer
 
     async def embed(self, text: str) -> list[float]:
         """Return an embedding vector for ``text`` via the Ollama embed model."""

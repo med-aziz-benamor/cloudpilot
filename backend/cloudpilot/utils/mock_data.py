@@ -370,6 +370,13 @@ async def _seed_chat(db, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
                 role=MessageRole.ASSISTANT,
                 content=answer,
                 citations_json=citations,
+                # ChatMessageResponse's `tool_calls` field always serializes
+                # as a list (default_factory=list, but Pydantic only applies
+                # that when the field is absent, not when it's explicitly
+                # None) — leaving this unset stores NULL and 500s every GET
+                # of this session. See services/chat_service.py's identical
+                # fix for the live chat path.
+                tool_calls_json=[],
             )
         )
     await db.flush()

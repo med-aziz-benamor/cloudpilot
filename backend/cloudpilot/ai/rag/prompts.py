@@ -13,53 +13,6 @@ Rules:
 - Keep answers under ~250 words unless asked for detail.
 """
 
-TOOL_DEFINITIONS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_resource_metrics",
-            "description": "Get recent CPU/RAM/network metrics for a resource.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "resource_id": {"type": "string"},
-                    "metric": {"type": "string"},
-                    "days": {"type": "integer"},
-                },
-                "required": ["resource_id", "metric"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_billing_summary",
-            "description": "Get a billing summary for a provider over N days.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "provider": {"type": "string"},
-                    "days": {"type": "integer"},
-                },
-                "required": ["provider"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_resources",
-            "description": "Search resources by name or service.",
-            "parameters": {
-                "type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-            },
-        },
-    },
-]
-
-
 def build_messages(
     question: str,
     retrieved_docs: list[dict],
