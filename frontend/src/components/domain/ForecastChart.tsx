@@ -96,12 +96,16 @@ export function ForecastChart({ forecast }: ForecastChartProps) {
           name="Forecast"
           connectNulls
         />
-        <ReferenceLine
-          y={forecast.budget_usd}
-          stroke="#EF4444"
-          strokeDasharray="4 4"
-          label={{ value: "Budget", fontSize: 11, fill: "#EF4444", position: "right" }}
-        />
+        {/* No budget set means no line to draw — a reference line at 0 would
+            read as a budget of zero that everything overruns. */}
+        {forecast.budget_usd !== null && (
+          <ReferenceLine
+            y={forecast.budget_usd}
+            stroke="#EF4444"
+            strokeDasharray="4 4"
+            label={{ value: "Budget", fontSize: 11, fill: "#EF4444", position: "right" }}
+          />
+        )}
       </ComposedChart>
     </ResponsiveContainer>
   );

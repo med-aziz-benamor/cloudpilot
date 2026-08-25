@@ -274,11 +274,11 @@ listed so nobody discovers them the hard way:
 | Demo mode (`DEMO_MODE=true`) | ✅ Complete — the intended way to run this today |
 | Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
 | Auth, RBAC, audit chain | ✅ Implemented and tested; production boot is guarded against placeholder secrets. Brute-force lockout, IP-spoofing and timing-side-channel fixes landed 2026-08-25 — see the session report |
-| Tenant isolation | ✅ Two independent layers (RBAC + ORM filter) over 9 models including `resources`/`billing_entries`. `metric_samples` is still single-layer. See [security.md](docs/security.md#what-layer-2-covers) |
+| Tenant isolation | ✅ Two independent layers (RBAC + ORM filter) over **every** org-scoped model — `metric_samples` joined the rest in migration `005`. See [security.md](docs/security.md#what-layer-2-covers) |
 | Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
 | Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
-| Setting an org's monthly budget | ❌ Column exists (`organizations.monthly_budget_usd`); no API. The forecast page shows it as read-only rather than a decorative editable field |
-| Dashboard aggregate caching | ❌ `CACHE_DASHBOARD_TTL` is defined but unused; cost queries hit Postgres every request |
+| Setting an org's monthly budget | ✅ `GET`/`PATCH /api/v1/forecast/budget` (admin-only, audited) and a working control on the Forecast page |
+| Dashboard aggregate caching | ✅ Redis-backed, tenant-scoped, invalidated on write (`core/cache.py`) |
 | `make dev` on a machine other than the original | ✅ Fixed 2026-08-25 — the `ollama` volume is now a named Docker volume |
 | Backend tests on the host | ⚠️ Need Python 3.11; a newer interpreter fails at collection. Run them in the container |
 | Pricing provenance in the UI | ⚠️ Tracked per-rate in the backend, not yet surfaced on screen |

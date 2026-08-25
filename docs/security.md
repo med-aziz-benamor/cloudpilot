@@ -55,11 +55,12 @@ multi-entity select left the trailing side unfiltered).
 ### What layer 2 covers
 
 The listener can only filter entities that **carry** the column — it inspects mappers
-and cannot follow a join to find one. Nine models declare it:
+and cannot follow a join to find one. **Every org-scoped model declares it**, ten in
+total:
 
 `user`, `cloud_account`, `recommendation`, `chat_session`, `forecast_snapshot`,
-`agent_run_log`, `audit_log`, and — since migration `004` — `resource` and
-`billing_entry`.
+`agent_run_log`, `audit_log`, — since migration `004` — `resource` and
+`billing_entry`, and — since migration `005` — `metric_sample`.
 
 Those last two are the platform's largest tables, and until `004` they carried no
 `organization_id` at all: they were scoped transitively through
@@ -77,13 +78,22 @@ proves this with deliberately naive statements (`select(Resource)` with no manua
 `cloud_account_id` filter), so it exercises the listener rather than the service code
 that was already correct.
 
-#### Still uncovered
+#### `metric_sample` — closed by `005`
 
-`metric_sample` has no `organization_id`. It is scoped through `resource_id`, so the
-listener does not engage on it; isolation there is still single-layer, via callers
-constraining on resource ids they have already proven in-org (`RightSizingAgent._p95`,
-`ResourceService.get_resource`). Denormalising it is the obvious next step — it was
-left out of `004` to keep that migration scoped.
+Until migration `005`, `metric_sample` had no `organization_id` and was scoped only
+through `resource_id`, so the listener never engaged on it and its isolation was
+single-layer — resting on callers constraining on resource ids they had already
+proven in-org (`RightSizingAgent._p95`, `ResourceService.get_resource`). `005`
+denormalises the column and backfills it from the owning resource, on the same
+add-nullable → backfill → refuse-on-orphans → NOT NULL pattern as `004`.
+
+`metric_samples` is RANGE-partitioned by month, which the migration handles by
+applying all DDL to the parent: Postgres propagates `ADD COLUMN`, `SET NOT NULL` and
+`CREATE INDEX` to every partition, and has supported a foreign key from a partitioned
+table to a non-partitioned one since PG12. `tests/test_tenant_isolation_metrics.py`
+covers it with the same deliberately-naive statements as the resources suite.
+
+There are now no org-scoped tables left on single-layer isolation.
 
 #### The scheduler
 

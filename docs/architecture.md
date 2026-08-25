@@ -89,10 +89,25 @@ The API never invokes scheduled agents inline — it only reads their persisted 
 | JWT revocation list | Redis (`revoked:{jti}`) | token expiry | implemented (`core/rate_limit.py`) |
 | RAG query results | in-process dict, keyed `(query, k)`, capped at 100 | process life | implemented (`ai/rag/engine.py`) |
 | Pricing catalog | `functools.lru_cache` over the committed snapshot | process life | implemented (`pricing/catalog.py`) |
-| Dashboard aggregates | Redis (`dashboard:{org}:{period}`) | 5 min | **not implemented** — `CACHE_DASHBOARD_TTL` is defined but unused; cost queries hit Postgres on every request |
+| Dashboard aggregates | Redis (`dashboard:{org}:{name}[:part]`) | `CACHE_DASHBOARD_TTL` (5 min) | implemented (`core/cache.py`) — covers the cost summary, breakdown and timeseries |
 
-`CACHE_PRICING_TTL` is likewise defined but unused: the rate card is not fetched at
+`CACHE_PRICING_TTL` is defined but unused: the rate card is not fetched at
 request time at all, so it needs no expiry — it is a snapshot refreshed by `make pricing`.
+
+Three rules govern the dashboard cache, and `core/cache.py` exists to enforce them:
+
+- **Every key is tenant-scoped.** A cache sits *in front of* the ORM tenant filter, so
+  a key that was not org-scoped would serve one tenant's figures to another without
+  `core/tenant.py` ever running. `org_key()` is the only way to build a key and always
+  takes an organization id.
+- **It fails open.** Redis being unreachable degrades to a slower correct answer, never
+  an error — deliberately the opposite of the auth surface, where `is_revoked` fails
+  *closed* (see [security.md](security.md)).
+- **It is invalidated on write, not just on TTL.** Actioning a recommendation changes
+  the summary's pending count and savings total; waiting out five minutes would leave
+  the KPI row disagreeing with what the user just did. Invalidation is hooked into
+  recommendation status changes, cloud syncs, and agent runs that create
+  recommendations.
 
 ## Technology choices — rationale
 
