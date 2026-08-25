@@ -16,6 +16,35 @@
    (`ollama_models`), so this works unmodified on any machine. Pull the models
    once the stack is up:
    `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
+
+   > **On Apple Silicon, run Ollama on the host instead.** Docker Desktop does
+   > not pass the GPU through, so the containerized Ollama runs the 3B model on
+   > pure CPU. Measured on an 8-core M-series machine: **~460 s for a single RAG
+   > answer** — longer than `LLM_TIMEOUT_SECONDS`, so the Cloud Advisor times
+   > out and serves its offline fallback instead of a real answer, while pegging
+   > every core it is allowed for the whole attempt.
+   >
+   > The container is capped (4 CPUs / 3 GB, model unloaded after 60 s idle) so
+   > it cannot take the whole machine, but the fix is to run Ollama natively,
+   > where it gets Metal acceleration:
+   >
+   > ```bash
+   > brew install ollama
+   > ollama serve                                   # in its own terminal
+   > ollama pull qwen2.5:3b && ollama pull nomic-embed-text
+   > ```
+   >
+   > Then point the stack at it — in `.env`:
+   >
+   > ```
+   > OLLAMA_BASE_URL=http://host.docker.internal:11434
+   > ```
+   >
+   > and skip the container: `docker compose up -d --scale ollama=0`.
+   >
+   > Everything except the Cloud Advisor works fine with no Ollama at all — the
+   > RAG engine falls back to hash embeddings and the chat returns an explicit
+   > "model unavailable" notice rather than a fabricated answer.
 3. **Seed demo data** (second terminal)
    ```bash
    make seed
