@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
@@ -43,7 +43,7 @@ class AgentBase(ABC):
         log = AgentRunLog(
             agent=self.agent_type,
             organization_id=organization_id,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status=AgentRunStatus.RUNNING,
         )
         db.add(log)
@@ -52,7 +52,7 @@ class AgentBase(ABC):
             count = await self.run(organization_id, db)
             log.status = AgentRunStatus.SUCCESS
             log.recommendations_created = count
-            log.finished_at = datetime.now(timezone.utc)
+            log.finished_at = datetime.now(UTC)
             await db.flush()
             logger.info(
                 "agent.run.success agent={} org={} created={}",
@@ -64,7 +64,7 @@ class AgentBase(ABC):
         except Exception as exc:
             log.status = AgentRunStatus.FAILED
             log.error_message = str(exc)
-            log.finished_at = datetime.now(timezone.utc)
+            log.finished_at = datetime.now(UTC)
             await db.flush()
             logger.exception("agent.run.failed agent={} org={}", self.name, organization_id)
             raise

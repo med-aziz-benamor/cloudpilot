@@ -45,7 +45,7 @@ class TenantContext:
         self._org_id = org_id
         self._token = None
 
-    def __enter__(self) -> "TenantContext":
+    def __enter__(self) -> TenantContext:
         self._token = _current_org_id.set(self._org_id)
         return self
 
@@ -53,7 +53,7 @@ class TenantContext:
         if self._token is not None:
             _current_org_id.reset(self._token)
 
-    async def __aenter__(self) -> "TenantContext":
+    async def __aenter__(self) -> TenantContext:
         return self.__enter__()
 
     async def __aexit__(self, *exc: object) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -154,7 +154,7 @@ class ResourceService:
         costs = await self._monthly_cost_by_resource()
 
         # Metrics
-        since = datetime.now(timezone.utc) - timedelta(days=14)
+        since = datetime.now(UTC) - timedelta(days=14)
         metric_series: list[ResourceMetricSeries] = []
         for metric in ("cpu_percent", "memory_percent"):
             rows = (
@@ -188,7 +188,7 @@ class ResourceService:
         ).all()
         cost_trend = [
             MetricPoint(
-                timestamp=datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc),
+                timestamp=datetime.combine(d, datetime.min.time(), tzinfo=UTC),
                 value=float(c),
             )
             for d, c in trend_rows

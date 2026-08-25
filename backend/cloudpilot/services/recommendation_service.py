@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -68,7 +68,7 @@ class RecommendationService:
         rec.status = payload.status
         if payload.status == RecommendationStatus.SNOOZED:
             hours = payload.snooze_hours or 24
-            rec.snoozed_until = datetime.now(timezone.utc) + timedelta(hours=hours)
+            rec.snoozed_until = datetime.now(UTC) + timedelta(hours=hours)
         else:
             rec.snoozed_until = None
         await self.db.flush()

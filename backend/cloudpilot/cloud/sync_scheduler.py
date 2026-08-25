@@ -8,7 +8,7 @@ not create duplicates.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from loguru import logger
@@ -39,7 +39,7 @@ async def sync_account(db: AsyncSession, account: CloudAccount) -> dict[str, int
     billing = await _sync_billing(db, account, adapter, resources)
     metrics = await _sync_metrics(db, adapter, resources)
 
-    account.last_synced_at = datetime.now(timezone.utc)
+    account.last_synced_at = datetime.now(UTC)
     account.status = CloudAccountStatus.ACTIVE
     account.error_message = None
     await db.flush()
@@ -65,7 +65,7 @@ async def _sync_resources(
     )
     by_pid = {r.provider_resource_id: r for r in existing}
     out: dict[str, Resource] = {}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for dto in dtos:
         res = by_pid.get(dto.provider_resource_id)
         if res is None:
@@ -123,7 +123,7 @@ async def _sync_billing(
 
 async def _sync_metrics(db: AsyncSession, adapter, resources: dict[str, Resource]) -> int:
     count = 0
-    cutoff = datetime.now(timezone.utc) - timedelta(days=_METRIC_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=_METRIC_DAYS)
     for pid, res in resources.items():
         if not res.sku:  # only collect metrics for sized resources
             continue

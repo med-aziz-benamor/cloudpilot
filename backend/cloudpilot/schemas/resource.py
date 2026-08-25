@@ -49,7 +49,7 @@ class ResourceTreeNode(ResponseSchema):
     kind: str  # 'provider' | 'region' | 'service'
     count: int
     monthly_cost_usd: float
-    children: list["ResourceTreeNode"] = []
+    children: list[ResourceTreeNode] = []
 
 
 ResourceTreeNode.model_rebuild()

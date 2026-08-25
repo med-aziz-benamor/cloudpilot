@@ -23,11 +23,10 @@ from prometheus_client import (
 )
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from cloudpilot.api.v1.router import api_router
-from cloudpilot.config import settings
-
 # Import tenant module so the ORM listener is installed at import time.
 import cloudpilot.core.tenant  # noqa: F401
+from cloudpilot.api.v1.router import api_router
+from cloudpilot.config import settings
 
 # ─── Prometheus metrics ───
 REQUEST_COUNT = Counter(

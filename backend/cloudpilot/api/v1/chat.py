@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cloudpilot.api.deps import client_ip, get_db, require_permission
+from cloudpilot.api.deps import get_db, require_permission
 from cloudpilot.core import rate_limit
 from cloudpilot.models.user import User
 from cloudpilot.schemas.chat import (

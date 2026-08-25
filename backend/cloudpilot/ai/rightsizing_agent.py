@@ -10,7 +10,7 @@ Algorithm:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -62,7 +62,7 @@ class RightSizingAgent(AgentBase):
         )
 
         existing = await self._existing_resource_ids(db, organization_id)
-        since = datetime.now(timezone.utc) - timedelta(days=_METRIC_DAYS)
+        since = datetime.now(UTC) - timedelta(days=_METRIC_DAYS)
         created = 0
 
         for res in resources:

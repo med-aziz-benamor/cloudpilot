@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.ai.base_agent import AgentBase
 from cloudpilot.models.billing_entry import BillingEntry
-from cloudpilot.models.cloud_account import CloudAccount, CloudProvider
+from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.recommendation import (
     AgentType,
     Recommendation,

@@ -19,7 +19,7 @@ import json
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -44,7 +44,7 @@ class TokenPayload:
 
 def create_access_token(user_id: uuid.UUID, org_id: uuid.UUID, role: str) -> str:
     """Mint a signed access token for the given principal."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "sub": str(user_id),
         "org": str(org_id),

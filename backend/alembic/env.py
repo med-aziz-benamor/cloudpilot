@@ -9,11 +9,10 @@ from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from cloudpilot.config import settings
-from cloudpilot.database import Base
-
 # Import the models package so every table is registered on Base.metadata.
 import cloudpilot.models  # noqa: F401
+from cloudpilot.config import settings
+from cloudpilot.database import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
