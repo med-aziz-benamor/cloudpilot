@@ -42,18 +42,29 @@ _AWS_TIMEOUT = 900.0
 # Azure — Retail Prices API
 # ─────────────────────────────────────────────────────────────
 def _azure_query(client: httpx.Client, odata_filter: str) -> list[dict[str, Any]]:
-    """Run one OData query against the Retail Prices API, following pagination."""
+    """Run one OData query against the Retail Prices API, following pagination.
+
+    Tolerant like the AWS fetcher below: a network failure or non-2xx response
+    degrades this one query to "no matches" (each caller already treats an
+    empty/missing match as "skip this SKU", returning None) rather than
+    propagating and aborting the whole ``make pricing`` run over one Azure
+    hiccup.
+    """
     items: list[dict[str, Any]] = []
     url: str | None = AZURE_RETAIL_API
     params: dict[str, str] | None = {"$filter": odata_filter}
-    while url:
-        resp = client.get(url, params=params)
-        resp.raise_for_status()
-        body = resp.json()
-        items.extend(body.get("Items", []))
-        # NextPageLink already carries the filter, so params must not be re-sent.
-        url = body.get("NextPageLink")
-        params = None
+    try:
+        while url:
+            resp = client.get(url, params=params)
+            resp.raise_for_status()
+            body = resp.json()
+            items.extend(body.get("Items", []))
+            # NextPageLink already carries the filter, so params must not be re-sent.
+            url = body.get("NextPageLink")
+            params = None
+    except Exception as exc:
+        logger.warning("Azure: query failed ({}), degrading to no matches: {}", odata_filter, exc)
+        return []
     return items
 
 
