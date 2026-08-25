@@ -1,4 +1,5 @@
 import { ShieldCheck, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ProviderBadge } from "@/components/domain/ProviderBadge";
@@ -6,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCloudAccounts, useDeleteAccount } from "@/hooks/useCloudAccounts";
 import { useQuery } from "@tanstack/react-query";
@@ -26,6 +28,8 @@ export function SettingsPage() {
   const user = useAuthStore((s) => s.user);
   const accounts = useCloudAccounts();
   const deleteAccount = useDeleteAccount();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingAccount = accounts.data?.find((a) => a.id === pendingDeleteId);
 
   const audit = useQuery({
     queryKey: ["audit-log"],
@@ -70,7 +74,8 @@ export function SettingsPage() {
                   variant="ghost"
                   size="icon"
                   className="text-neutral-400 hover:text-status-danger"
-                  onClick={() => deleteAccount.mutate(a.id)}
+                  onClick={() => setPendingDeleteId(a.id)}
+                  disabled={deleteAccount.isPending}
                   aria-label="Disconnect"
                 >
                   <Trash2 size={16} />
@@ -148,6 +153,25 @@ export function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => !open && setPendingDeleteId(null)}
+        title="Disconnect cloud account"
+        description={
+          pendingAccount
+            ? `This disconnects "${pendingAccount.display_name}". CloudPilot will stop syncing its resources and billing.`
+            : "This disconnects the cloud account."
+        }
+        confirmLabel="Disconnect"
+        isPending={deleteAccount.isPending}
+        onConfirm={() => {
+          if (!pendingDeleteId) return;
+          deleteAccount.mutate(pendingDeleteId, {
+            onSuccess: () => setPendingDeleteId(null),
+          });
+        }}
+      />
     </div>
   );
 }
