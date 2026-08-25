@@ -16,6 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.cloud.base import get_adapter
+from cloudpilot.core import cache
 from cloudpilot.core.security import decrypt_credential
 from cloudpilot.database import AsyncSessionLocal
 from cloudpilot.models.billing_entry import BillingEntry
@@ -43,6 +44,9 @@ async def sync_account(db: AsyncSession, account: CloudAccount) -> dict[str, int
     account.status = CloudAccountStatus.ACTIVE
     account.error_message = None
     await db.flush()
+    # Resources, billing and metrics all just changed underneath the cached
+    # dashboard aggregates for this tenant.
+    await cache.invalidate_org(account.organization_id)
     logger.info(
         "Synced account {} ({}): {} resources, {} billing, {} metrics",
         account.display_name,

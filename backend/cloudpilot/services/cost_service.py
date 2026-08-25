@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudpilot.config import settings
+from cloudpilot.core import cache
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.cloud_account import CloudAccount, CloudProvider
 from cloudpilot.models.recommendation import (
@@ -42,6 +44,14 @@ class CostService:
         return {a.id: a for a in rows}
 
     async def get_summary(self) -> CostSummary:
+        key = cache.org_key(self.org_id, "summary")
+        if (hit := await cache.get_json(key)) is not None:
+            return CostSummary.model_validate(hit)
+        summary = await self._compute_summary()
+        await cache.set_json(key, summary.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
+        return summary
+
+    async def _compute_summary(self) -> CostSummary:
         accounts = await self._accounts()
         if not accounts:
             return CostSummary(
@@ -98,6 +108,14 @@ class CostService:
         )
 
     async def get_breakdown(self) -> dict:
+        key = cache.org_key(self.org_id, "breakdown")
+        if (hit := await cache.get_json(key)) is not None:
+            return hit
+        breakdown = await self._compute_breakdown()
+        await cache.set_json(key, breakdown, settings.CACHE_DASHBOARD_TTL)
+        return breakdown
+
+    async def _compute_breakdown(self) -> dict:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:
@@ -182,6 +200,16 @@ class CostService:
         return {"by_provider": by_provider, "by_service": by_service, "by_region": by_region}
 
     async def get_timeseries(self, period_days: int = 90) -> CostTimeseriesResponse:
+        # The period is part of the key: the 7/30/90-day views are different
+        # answers to different questions and must not share an entry.
+        key = cache.org_key(self.org_id, "timeseries", period_days)
+        if (hit := await cache.get_json(key)) is not None:
+            return CostTimeseriesResponse.model_validate(hit)
+        series = await self._compute_timeseries(period_days)
+        await cache.set_json(key, series.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
+        return series
+
+    async def _compute_timeseries(self, period_days: int = 90) -> CostTimeseriesResponse:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:

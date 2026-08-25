@@ -10,6 +10,7 @@ from typing import Any
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudpilot.core import cache
 from cloudpilot.models.agent_run_log import AgentRunLog, AgentRunStatus
 from cloudpilot.models.recommendation import AgentType
 
@@ -54,6 +55,10 @@ class AgentBase(ABC):
             log.recommendations_created = count
             log.finished_at = datetime.now(UTC)
             await db.flush()
+            if count:
+                # New recommendations change the dashboard's pending count and
+                # potential-savings total.
+                await cache.invalidate_org(organization_id)
             logger.info(
                 "agent.run.success agent={} org={} created={}",
                 self.name,

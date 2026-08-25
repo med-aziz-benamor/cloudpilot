@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudpilot.core import cache
 from cloudpilot.core.audit import write_audit
 from cloudpilot.models.recommendation import (
     AgentType,
@@ -80,6 +81,11 @@ class RecommendationService:
             resource_type="recommendation",
             resource_id=str(rec.id),
         )
+        # The dashboard summary counts pending recommendations and sums their
+        # savings, so actioning one makes the cached figures wrong immediately.
+        # Waiting out the TTL would leave the KPI row visibly disagreeing with
+        # the action the user just took.
+        await cache.invalidate_org(self.org_id)
         return await self._to_response(rec)
 
     async def savings_summary(self) -> SavingsSummary:
