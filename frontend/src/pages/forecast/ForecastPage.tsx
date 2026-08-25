@@ -92,13 +92,17 @@ export function ForecastPage() {
 
           <Card className="p-5 no-print">
             <h3 className="mb-3 text-h4 font-semibold">Budget alerts</h3>
+            <p className="mb-3 text-caption text-neutral-400">
+              Set via seed data — editing isn't available yet.
+            </p>
             <div className="flex flex-wrap items-center gap-6 text-body-sm text-neutral-600">
               <label className="flex items-center gap-2">
                 Monthly budget
                 <input
                   type="number"
                   defaultValue={data.budget_usd}
-                  className="w-28 rounded-md border border-neutral-200 px-2 py-1"
+                  disabled
+                  className="w-28 rounded-md border border-neutral-200 px-2 py-1 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400"
                 />
               </label>
               <span className="flex items-center gap-2">
@@ -107,8 +111,8 @@ export function ForecastPage() {
               <span className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-status-danger" /> Danger at 100%
               </span>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" defaultChecked /> Alert on projected overrun
+              <label className="flex items-center gap-2 text-neutral-400">
+                <input type="checkbox" defaultChecked disabled /> Alert on projected overrun
               </label>
             </div>
           </Card>
