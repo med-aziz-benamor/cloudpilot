@@ -174,6 +174,7 @@ cloudpilot/
 | [`docs/session-report-2026-07-14.md`](docs/session-report-2026-07-14.md) | Dated engineering record of the pricing-grounded-simulator rework and the bugs it surfaced |
 | [`docs/session-report-2026-07-20.md`](docs/session-report-2026-07-20.md) | Security/agent hardening pass — tenant filter fix, anomaly recalibration, RAG cache fixes |
 | [`docs/session-report-2026-07-20b.md`](docs/session-report-2026-07-20b.md) | Denormalizing `organization_id` onto `resources`/`billing_entries` to restore two-layer tenant isolation |
+| [`docs/session-report-2026-08-05.md`](docs/session-report-2026-08-05.md) | Status audit: zero commits since 20 July, 116 tests still passing, `make seed` still not re-run, RBAC has no test coverage |
 
 ---
 
