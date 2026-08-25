@@ -80,7 +80,7 @@ class LLMClient:
 
     async def _ollama_generate(
         self, messages: list[dict[str, str]], tools: list[dict[str, Any]] | None
-    ) -> str:
+    ) -> str | None:
         async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
             payload: dict[str, Any] = {
                 "model": settings.OLLAMA_MODEL,
@@ -94,11 +94,14 @@ class LLMClient:
                 f"{settings.OLLAMA_BASE_URL}/api/chat", json=payload
             )
             resp.raise_for_status()
-            return resp.json()["message"]["content"]
+            # May be null when a tool-calling model wants to call a tool;
+            # generate() treats a falsy answer as a fallback case.
+            content: str | None = resp.json()["message"]["content"]
+            return content
 
     async def _openai_generate(
         self, messages: list[dict[str, str]], tools: list[dict[str, Any]] | None
-    ) -> str:
+    ) -> str | None:
         async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
             payload: dict[str, Any] = {
                 "model": "gpt-4o-mini",
@@ -113,7 +116,8 @@ class LLMClient:
                 json=payload,
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            content: str | None = resp.json()["choices"][0]["message"]["content"]
+            return content
 
     @staticmethod
     def _fallback(messages: list[dict[str, str]]) -> str:

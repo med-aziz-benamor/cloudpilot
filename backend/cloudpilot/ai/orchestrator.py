@@ -19,6 +19,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from loguru import logger
 from sqlalchemy import select
 
+from cloudpilot.ai.base_agent import AgentBase
 from cloudpilot.ai.cost_agent import CostAgent
 from cloudpilot.ai.forecast_agent import ForecastAgent
 from cloudpilot.ai.rightsizing_agent import RightSizingAgent
@@ -31,7 +32,7 @@ _rightsizing_agent = RightSizingAgent()
 _forecast_agent = ForecastAgent()
 
 
-async def _run_for_all_orgs(agent) -> None:
+async def _run_for_all_orgs(agent: AgentBase) -> None:
     """Execute an agent for every organization in its own transaction.
 
     Note on tenant isolation: this process has no request lifecycle, so nothing

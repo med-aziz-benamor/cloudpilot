@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 SYSTEM_PROMPT = """You are CloudPilot's infrastructure advisor.
 
 Answer the user's question about THEIR cloud infrastructure (Azure, AWS, GCP).
@@ -15,9 +17,9 @@ Rules:
 
 def build_messages(
     question: str,
-    retrieved_docs: list[dict],
+    retrieved_docs: list[dict[str, Any]],
     live_data: str | None = None,
-    history: list[dict] | None = None,
+    history: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Assemble the chat message list sent to the LLM."""
     context_blocks = []

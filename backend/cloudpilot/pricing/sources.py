@@ -187,7 +187,8 @@ def _aws_offer(client: httpx.Client, service: str) -> dict[str, Any] | None:
         logger.info("AWS: fetching {} rate card (this is a large file)", service)
         resp = client.get(url, timeout=_AWS_TIMEOUT)
         resp.raise_for_status()
-        return json.loads(resp.content)
+        offer: dict[str, Any] = json.loads(resp.content)
+        return offer
     except Exception as exc:
         logger.warning("AWS: could not fetch {} offer file: {}", service, exc)
         return None

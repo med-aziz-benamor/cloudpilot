@@ -198,7 +198,10 @@ class ResourceService:
             await self.db.execute(
                 select(func.count(Recommendation.id)).where(
                     Recommendation.organization_id == self.org_id,
-                    Recommendation.affected_resource_ids.any(resource_id),
+                    # ARRAY.any() takes a value, but the stub types it as the
+                    # relationship-level PropComparator.any() which expects a
+                    # criterion. The SQL is correct; the stub is not.
+                    Recommendation.affected_resource_ids.any(resource_id),  # type: ignore[arg-type]
                     Recommendation.status == RecommendationStatus.PENDING,
                 )
             )

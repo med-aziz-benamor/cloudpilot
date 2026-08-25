@@ -12,7 +12,7 @@ a query can never return another tenant's rows.
 from __future__ import annotations
 
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,7 @@ class TenantContext:
 
     def __init__(self, org_id: uuid.UUID | None) -> None:
         self._org_id = org_id
-        self._token = None
+        self._token: Token[uuid.UUID | None] | None = None
 
     def __enter__(self) -> TenantContext:
         self._token = _current_org_id.set(self._org_id)

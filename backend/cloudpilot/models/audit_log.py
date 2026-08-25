@@ -8,6 +8,7 @@ modification detectable.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import CHAR, Index, String, Text
 from sqlalchemy.dialects.postgresql import INET, JSONB
@@ -33,7 +34,9 @@ class AuditLog(BaseModel):
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     resource_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    payload_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, nullable=False
+    )
     ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     signature: Mapped[str] = mapped_column(CHAR(64), nullable=False)

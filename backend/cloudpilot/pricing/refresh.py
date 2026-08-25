@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 
+import httpx
 from loguru import logger
 
 from cloudpilot.pricing import sources
@@ -19,7 +20,7 @@ from cloudpilot.pricing.catalog import DOWNSIZE_MAP, SNAPSHOT_PATH, PricingCatal
 from cloudpilot.pricing.models import Price, PriceUnit
 
 
-def fetch_azure(client: sources.httpx.Client) -> dict[str, Price]:
+def fetch_azure(client: httpx.Client) -> dict[str, Price]:
     """Fetch every Azure SKU the demo fleet uses."""
     out: dict[str, Price] = {}
     for arm_sku in ("Standard_D2s_v3", "Standard_D4s_v3", "Standard_D8s_v3"):
@@ -68,7 +69,7 @@ def fetch_azure(client: sources.httpx.Client) -> dict[str, Price]:
     return out
 
 
-def fetch_aws(client: sources.httpx.Client, deep: bool = False) -> dict[str, Price]:
+def fetch_aws(client: httpx.Client, deep: bool = False) -> dict[str, Price]:
     """Return the AWS rate card.
 
     Defaults to the transcribed list prices, because the bulk offer files are far too

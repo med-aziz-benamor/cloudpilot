@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,27 +96,30 @@ class CostService:
             )
         ).scalar_one()
 
-        score = self._optimization_score(mtd, float(savings))
+        # COALESCE(..., 0) means the driver never returns NULL here, but the
+        # column is nullable so the static type is Decimal | None.
+        savings_usd = float(savings or 0)
+        score = self._optimization_score(mtd, savings_usd)
         return CostSummary(
             mtd_usd=round(mtd, 2),
             projected_month_end_usd=round(projected, 2),
             last_month_usd=round(last_full, 2),
             delta_pct=round(delta_pct, 1),
-            potential_savings_usd=round(float(savings), 2),
+            potential_savings_usd=round(savings_usd, 2),
             optimization_score=score,
             connected_clouds=len({a.provider for a in accounts.values()}),
             pending_recommendations=int(pending),
         )
 
-    async def get_breakdown(self) -> dict:
+    async def get_breakdown(self) -> dict[str, Any]:
         key = cache.org_key(self.org_id, "breakdown")
         if (hit := await cache.get_json(key)) is not None:
-            return hit
+            return hit  # type: ignore[no-any-return]
         breakdown = await self._compute_breakdown()
         await cache.set_json(key, breakdown, settings.CACHE_DASHBOARD_TTL)
         return breakdown
 
-    async def _compute_breakdown(self) -> dict:
+    async def _compute_breakdown(self) -> dict[str, Any]:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:
@@ -128,15 +132,16 @@ class CostService:
         # Region lives on the resource, not the billing row, so join through it. A
         # billing row with no resource (rare) is bucketed as "unassigned" rather than
         # dropped, so the region totals still sum to the provider totals.
-        region_by_resource = dict(
-            (
+        region_by_resource: dict[uuid.UUID, str] = {
+            row.id: row.region
+            for row in (
                 await self.db.execute(
                     select(Resource.id, Resource.region).where(
                         Resource.cloud_account_id.in_(account_ids)
                     )
                 )
             ).all()
-        )
+        }
 
         rows = (
             await self.db.execute(
@@ -321,7 +326,9 @@ class CostService:
         return out
 
     # ─── helpers ───
-    async def _sum_between(self, account_ids, start: date, end: date) -> float:
+    async def _sum_between(
+        self, account_ids: list[uuid.UUID], start: date, end: date
+    ) -> float:
         total = (
             await self.db.execute(
                 select(func.coalesce(func.sum(BillingEntry.cost_usd), 0)).where(

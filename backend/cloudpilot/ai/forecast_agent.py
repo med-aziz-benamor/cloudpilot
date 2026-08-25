@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from datetime import date, timedelta
+from typing import Any
 
 import pandas as pd
 from loguru import logger
@@ -70,7 +71,7 @@ class ForecastAgent(AgentBase):
         await db.flush()
         return created
 
-    def _fit(self, df: pd.DataFrame):
+    def _fit(self, df: pd.DataFrame) -> Any:
         from prophet import Prophet
 
         model = Prophet(
@@ -88,7 +89,7 @@ class ForecastAgent(AgentBase):
         model.fit(df[["ds", "y", "month_end"]])
         return model
 
-    def _predict(self, model, df: pd.DataFrame, horizon: int) -> dict:
+    def _predict(self, model: Any, df: pd.DataFrame, horizon: int) -> dict[str, Any]:
         future = model.make_future_dataframe(periods=horizon)
         future["month_end"] = future["ds"].apply(lambda d: 1.0 if d.day >= 26 else 0.0)
         fc = model.predict(future).tail(horizon)
@@ -106,7 +107,7 @@ class ForecastAgent(AgentBase):
         organization_id: uuid.UUID,
         snapshot_date: date,
         horizon: int,
-        forecast: dict,
+        forecast: dict[str, Any],
     ) -> None:
         existing = (
             await db.execute(
@@ -130,7 +131,7 @@ class ForecastAgent(AgentBase):
             )
 
     async def _maybe_budget_alert(
-        self, db: AsyncSession, organization_id: uuid.UUID, model, df: pd.DataFrame
+        self, db: AsyncSession, organization_id: uuid.UUID, model: Any, df: pd.DataFrame
     ) -> int:
         """Raise an overrun alert only against a budget the tenant actually set."""
         org = await db.get(Organization, organization_id)

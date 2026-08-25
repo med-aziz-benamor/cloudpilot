@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from typing import Any
 
 from loguru import logger
 
@@ -35,7 +36,7 @@ _AWS_REGIONS = ["eu-west-1", "us-east-1"]
 class AWSAdapter(CloudProviderAdapter):
     provider = CloudProvider.AWS
 
-    def _assume_role_session(self):  # pragma: no cover - requires AWS
+    def _assume_role_session(self) -> Any:  # pragma: no cover - requires AWS
         import boto3
 
         sts = boto3.client("sts")

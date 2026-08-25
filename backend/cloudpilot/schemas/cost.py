@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from cloudpilot.models.cloud_account import CloudProvider
 from cloudpilot.schemas.common import ResponseSchema
@@ -46,7 +47,7 @@ class CostTimeseriesPoint(ResponseSchema):
 class CostBreakdownResponse(ResponseSchema):
     by_provider: list[ProviderCost]
     by_service: list[ServiceCost]
-    by_region: list[dict]
+    by_region: list[dict[str, Any]]
 
 
 class CostTimeseriesResponse(ResponseSchema):

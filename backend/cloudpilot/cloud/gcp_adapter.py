@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from typing import Any
 
 from loguru import logger
 
@@ -33,9 +34,10 @@ from cloudpilot.models.cloud_account import CloudProvider
 class GCPAdapter(CloudProviderAdapter):
     provider = CloudProvider.GCP
 
-    def _service_account(self) -> dict:  # pragma: no cover - requires GCP
+    def _service_account(self) -> dict[str, Any]:  # pragma: no cover - requires GCP
         raw = self.credentials.get("service_account_json", "{}")
-        return json.loads(raw) if isinstance(raw, str) else raw
+        parsed: dict[str, Any] = json.loads(raw) if isinstance(raw, str) else raw
+        return parsed
 
     async def validate_credentials(self) -> bool:
         if self.demo_mode:

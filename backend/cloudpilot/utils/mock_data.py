@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from loguru import logger
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.ai.cost_agent import CostAgent
 from cloudpilot.ai.forecast_agent import ForecastAgent
@@ -89,7 +90,7 @@ def _service_label(service: str) -> str:
     return _SERVICE_LABELS.get(service, service.replace("_", " ").title())
 
 
-async def _reset_existing(db) -> None:
+async def _reset_existing(db: AsyncSession) -> None:
     existing = (
         (await db.execute(select(Organization).where(Organization.name == "Acme Corp")))
         .scalars()
@@ -166,7 +167,7 @@ async def seed() -> None:
         )
 
 
-async def _seed_accounts(db, org_id: uuid.UUID) -> dict[CloudProvider, CloudAccount]:
+async def _seed_accounts(db: AsyncSession, org_id: uuid.UUID) -> dict[CloudProvider, CloudAccount]:
     now = datetime.now(UTC)
     blueprint = [
         (CloudProvider.AZURE, "Acme Azure Subscription", "11111111-2222-3333-4444-555555555555", 2),
@@ -191,7 +192,7 @@ async def _seed_accounts(db, org_id: uuid.UUID) -> dict[CloudProvider, CloudAcco
 
 
 async def _seed_resources(
-    db, accounts: dict[CloudProvider, CloudAccount]
+    db: AsyncSession, accounts: dict[CloudProvider, CloudAccount]
 ) -> dict[str, tuple[Resource, FleetResource]]:
     """Materialise the simulated fleet as Resource rows."""
     index: dict[str, tuple[Resource, FleetResource]] = {}
@@ -224,7 +225,7 @@ async def _seed_resources(
 
 
 async def _seed_billing(
-    db,
+    db: AsyncSession,
     accounts: dict[CloudProvider, CloudAccount],
     resources: dict[str, tuple[Resource, FleetResource]],
 ) -> float:
@@ -260,7 +261,9 @@ async def _seed_billing(
     return total
 
 
-async def _seed_metrics(db, resources: dict[str, tuple[Resource, FleetResource]]) -> None:
+async def _seed_metrics(
+    db: AsyncSession, resources: dict[str, tuple[Resource, FleetResource]]
+) -> None:
     today = date.today()
     count = 0
     for res, sim in resources.values():
@@ -280,7 +283,7 @@ async def _seed_metrics(db, resources: dict[str, tuple[Resource, FleetResource]]
     logger.info("Seeded {} metric samples", count)
 
 
-async def _run_agents(db, org_id: uuid.UUID) -> None:
+async def _run_agents(db: AsyncSession, org_id: uuid.UUID) -> None:
     """Run the real agents over the seeded estate.
 
     This is what fills the recommendations page. Nothing here is a canned finding:
@@ -301,7 +304,7 @@ async def _run_agents(db, org_id: uuid.UUID) -> None:
     await db.flush()
 
 
-async def _seed_chat(db, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
+async def _seed_chat(db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
     """Seed chat history whose figures are computed from the simulated estate.
 
     The answers quote the same numbers the rest of the platform would, because they

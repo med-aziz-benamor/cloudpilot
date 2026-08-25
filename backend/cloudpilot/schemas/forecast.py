@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from pydantic import Field
 
@@ -31,7 +32,7 @@ class ForecastResponse(ResponseSchema):
     overrun_pct: float
     next_90d_usd: float
     points: list[ForecastPoint]
-    actuals: list[dict]  # [{"ds": date, "y": float}, ...]
+    actuals: list[dict[str, Any]]  # [{"ds": date, "y": float}, ...]
 
 
 class BudgetUpdate(APISchema):

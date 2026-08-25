@@ -16,6 +16,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import numpy as np
+import numpy.typing as npt
 from loguru import logger
 from sklearn.ensemble import IsolationForest
 from sqlalchemy import select
@@ -150,7 +151,7 @@ class CostAgent(AgentBase):
         logger.info("CostAgent created {} recommendations for org {}", created, organization_id)
         return created
 
-    def _detect(self, dates: list[date], values: np.ndarray) -> list[int]:
+    def _detect(self, dates: list[date], values: npt.NDArray[np.float64]) -> list[int]:
         """Return indices flagged by IsolationForest ∪ Z-score(>2σ)."""
         flagged: set[int] = set()
 

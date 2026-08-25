@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc, func, select
@@ -110,14 +111,18 @@ class ForecastService:
         await self.db.flush()
         return float(org.monthly_budget_usd)
 
-    async def _account_ids(self):
-        return (
-            await self.db.execute(
-                select(CloudAccount.id).where(CloudAccount.organization_id == self.org_id)
-            )
-        ).scalars().all()
+    async def _account_ids(self) -> list[uuid.UUID]:
+        return list(
+            (
+                await self.db.execute(
+                    select(CloudAccount.id).where(
+                        CloudAccount.organization_id == self.org_id
+                    )
+                )
+            ).scalars().all()
+        )
 
-    async def _actuals(self) -> list[dict]:
+    async def _actuals(self) -> list[dict[str, Any]]:
         account_ids = await self._account_ids()
         if not account_ids:
             return []

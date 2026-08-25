@@ -22,7 +22,10 @@ def get_redis() -> redis.Redis:
     """Return a lazily-initialized async Redis client."""
     global _client
     if _client is None:
-        _client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        # redis-py ships no annotation for from_url.
+        _client = redis.from_url(  # type: ignore[no-untyped-call]
+            settings.REDIS_URL, decode_responses=True
+        )
     return _client
 
 
@@ -40,7 +43,7 @@ async def check_rate_limit(identifier: str, limit: int, window_seconds: int) -> 
         current = await client.incr(key)
         if current == 1:
             await client.expire(key, window_seconds)
-        return current <= limit
+        return bool(current <= limit)
     except Exception as exc:  # pragma: no cover - resilience
         logger.warning("Rate limiter unavailable, failing open: {}", exc)
         return True
@@ -75,7 +78,7 @@ async def is_revoked(jti: str) -> bool:
     honouring revoked credentials.
     """
     try:
-        return await get_redis().exists(f"revoked:{jti}") == 1
+        return bool(await get_redis().exists(f"revoked:{jti}") == 1)
     except Exception as exc:  # pragma: no cover - resilience
         logger.warning("Revocation check unavailable, failing closed: {}", exc)
         return True
@@ -99,6 +102,7 @@ async def consume_refresh_token(token: str) -> str | None:
     """
     try:
         client = get_redis()
-        return await client.getdel(f"refresh:{token}")
+        user_id: str | None = await client.getdel(f"refresh:{token}")
+        return user_id
     except Exception:  # pragma: no cover
         return None

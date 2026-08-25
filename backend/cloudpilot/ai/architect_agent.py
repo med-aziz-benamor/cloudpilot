@@ -72,9 +72,9 @@ class ArchitectAgent(AgentBase):
 
     async def _gather_live_context(
         self, db: AsyncSession, organization_id: uuid.UUID, question: str
-    ) -> tuple[str, list[dict]]:
+    ) -> tuple[str, list[dict[str, Any]]]:
         """Resolve referenced resources and produce a live-data summary + tool trace."""
-        tool_calls: list[dict] = []
+        tool_calls: list[dict[str, Any]] = []
         parts: list[str] = []
 
         account_ids = (
@@ -132,10 +132,12 @@ class ArchitectAgent(AgentBase):
 
         return "\n".join(parts), tool_calls
 
-    def _build_citations(self, answer: str | None, docs: list[dict]) -> list[dict]:
+    def _build_citations(
+        self, answer: str | None, docs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Map [n] markers in the answer back to retrieved document metadata."""
         used = {int(n) for n in re.findall(r"\[(\d+)\]", answer or "")}
-        citations: list[dict] = []
+        citations: list[dict[str, Any]] = []
         for i, doc in enumerate(docs, start=1):
             if not used or i in used:
                 citations.append(

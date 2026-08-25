@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from loguru import logger
 from sqlalchemy import delete, select
@@ -59,7 +60,7 @@ async def sync_account(db: AsyncSession, account: CloudAccount) -> dict[str, int
 
 
 async def _sync_resources(
-    db: AsyncSession, account: CloudAccount, adapter
+    db: AsyncSession, account: CloudAccount, adapter: Any
 ) -> dict[str, Resource]:
     dtos = await adapter.get_resources()
     existing = (
@@ -93,7 +94,7 @@ async def _sync_resources(
 
 
 async def _sync_billing(
-    db: AsyncSession, account: CloudAccount, adapter, resources: dict[str, Resource]
+    db: AsyncSession, account: CloudAccount, adapter: Any, resources: dict[str, Resource]
 ) -> int:
     end = date.today()
     start = end - timedelta(days=_BILLING_DAYS)
@@ -125,7 +126,9 @@ async def _sync_billing(
     return len(dtos)
 
 
-async def _sync_metrics(db: AsyncSession, adapter, resources: dict[str, Resource]) -> int:
+async def _sync_metrics(
+    db: AsyncSession, adapter: Any, resources: dict[str, Resource]
+) -> int:
     count = 0
     cutoff = datetime.now(UTC) - timedelta(days=_METRIC_DAYS)
     for pid, res in resources.items():

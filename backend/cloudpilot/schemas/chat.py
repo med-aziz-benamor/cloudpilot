@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import Field, field_validator
 
@@ -19,8 +20,8 @@ class Citation(ResponseSchema):
 
 class ToolCall(ResponseSchema):
     tool: str
-    args: dict
-    result: dict | None = None
+    args: dict[str, Any]
+    result: dict[str, Any] | None = None
 
 
 class ChatMessageResponse(ResponseSchema):
