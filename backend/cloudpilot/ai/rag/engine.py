@@ -44,10 +44,13 @@ class RAGEngine:
 
     def __init__(self) -> None:
         self.llm = LLMClient()
-        self._collection = None
+        # chromadb is an optional runtime dependency (the engine degrades to an
+        # in-memory store when it is unreachable), so the collection is typed
+        # loosely rather than importing chromadb just for an annotation.
+        self._collection: Any | None = None
         self._memory_store: list[dict[str, Any]] = []
 
-    def _get_collection(self):
+    def _get_collection(self) -> Any | None:
         if self._collection is not None:
             return self._collection
         try:
@@ -168,10 +171,35 @@ class RAGEngine:
         collection = self._get_collection()
         if collection is not None:
             try:
-                return collection.count()
+                total: int = collection.count()
+                return total
             except Exception:  # pragma: no cover
                 pass
         return len(self._memory_store)
+
+    async def reset(self) -> None:
+        """Drop every stored chunk so the corpus can be re-ingested.
+
+        Needed because ingestion is otherwise skip-if-non-empty: without this,
+        adding an entry to ``KNOWLEDGE_BASE`` would never reach an environment
+        whose collection was already populated by an earlier, smaller corpus.
+        Also clears the in-process retrieval cache, which would otherwise keep
+        answering from the corpus that was just deleted.
+        """
+        collection = self._get_collection()
+        if collection is not None:
+            try:
+                import chromadb
+
+                client = chromadb.HttpClient(
+                    host=settings.CHROMADB_HOST, port=settings.CHROMADB_PORT
+                )
+                client.delete_collection(name=settings.CHROMADB_COLLECTION)
+                self._collection = None
+            except Exception as exc:  # pragma: no cover - resilience
+                logger.warning("Could not reset Chroma collection: {}", exc)
+        self._memory_store.clear()
+        _cache.clear()
 
 
 # Module-level query cache (keyed by query+k) — 100 entries, FIFO eviction.
