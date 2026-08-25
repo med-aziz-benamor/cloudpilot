@@ -18,10 +18,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAnomalies, useCostBreakdown, useCostTimeseries } from "@/hooks/useCosts";
 import { PROVIDER_META } from "@/lib/constants";
 import { formatCurrency, formatDelta } from "@/lib/utils";
+import { useCloudStore } from "@/stores/cloud.store";
 
 export function CostsPage() {
+  const { timeRange, setTimeRange } = useCloudStore();
   const breakdown = useCostBreakdown();
-  const timeseries = useCostTimeseries(30);
+  const timeseries = useCostTimeseries(timeRange);
   const anomalies = useAnomalies();
 
   return (
@@ -42,7 +44,26 @@ export function CostsPage() {
         <TabsContent value="overview">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card className="p-5 lg:col-span-2">
-              <h3 className="mb-4 text-h4 font-semibold">Daily spend by provider (30d)</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-h4 font-semibold">
+                  Daily spend by provider ({timeRange}d)
+                </h3>
+                <div className="flex gap-1 rounded-lg bg-neutral-100 p-1">
+                  {([7, 30, 90] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setTimeRange(d)}
+                      className={`rounded-md px-3 py-1 text-body-sm font-medium transition-colors ${
+                        timeRange === d
+                          ? "bg-white text-neutral-900 shadow-sm"
+                          : "text-neutral-500"
+                      }`}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+              </div>
               {timeseries.isLoading || !timeseries.data ? (
                 <Skeleton className="h-72" />
               ) : (
