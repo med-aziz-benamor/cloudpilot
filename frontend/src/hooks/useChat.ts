@@ -32,18 +32,24 @@ export function useCreateSession() {
   });
 }
 
-export function useSendMessage(sessionId: string) {
+export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (content: string) =>
+    mutationFn: async ({
+      sessionId,
+      content,
+    }: {
+      sessionId: string;
+      content: string;
+    }) =>
       (
         await api.post<ChatMessage>(
           `/api/v1/chat/sessions/${sessionId}/messages`,
           { content },
         )
       ).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["chat-session", sessionId] });
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["chat-session", variables.sessionId] });
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
     },
   });

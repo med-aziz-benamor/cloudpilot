@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ChatBubble } from "@/components/domain/ChatBubble";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import {
   useChatSession,
@@ -24,8 +25,9 @@ export function ChatPage() {
   const deleteSession = useDeleteSession();
   const [activeId, setActiveId] = useState<string | null>(null);
   const detail = useChatSession(activeId);
-  const sendMessage = useSendMessage(activeId ?? "");
+  const sendMessage = useSendMessage();
   const [draft, setDraft] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Select the first session by default.
@@ -52,7 +54,7 @@ export function ChatPage() {
       sessionId = session.id;
       setActiveId(sessionId);
     }
-    await sendMessage.mutateAsync(text);
+    await sendMessage.mutateAsync({ sessionId, content: text });
   };
 
   return (
@@ -88,11 +90,9 @@ export function ChatPage() {
                 <p className="text-caption text-neutral-400">{s.message_count} messages</p>
               </button>
               <button
-                onClick={() => {
-                  deleteSession.mutate(s.id);
-                  if (activeId === s.id) setActiveId(null);
-                }}
-                className="text-neutral-300 opacity-0 transition-opacity hover:text-status-danger group-hover:opacity-100"
+                onClick={() => setPendingDeleteId(s.id)}
+                disabled={deleteSession.isPending}
+                className="text-neutral-300 opacity-0 transition-opacity hover:text-status-danger group-hover:opacity-100 disabled:opacity-50"
                 aria-label="Delete conversation"
               >
                 <Trash2 size={14} />
@@ -179,6 +179,25 @@ export function ChatPage() {
           </form>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => !open && setPendingDeleteId(null)}
+        title="Delete conversation"
+        description="This permanently deletes the conversation and its messages."
+        confirmLabel="Delete"
+        isPending={deleteSession.isPending}
+        onConfirm={() => {
+          if (!pendingDeleteId) return;
+          const id = pendingDeleteId;
+          deleteSession.mutate(id, {
+            onSuccess: () => {
+              setPendingDeleteId(null);
+              if (activeId === id) setActiveId(null);
+            },
+          });
+        }}
+      />
     </div>
   );
 }
