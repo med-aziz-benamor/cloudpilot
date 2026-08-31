@@ -5,7 +5,7 @@
 COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
 
-.PHONY: help dev build up down test lint migrate seed logs clean shell-be shell-db docs format typecheck
+.PHONY: help dev build up down test e2e lint migrate seed logs clean shell-be shell-db docs format typecheck
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -37,7 +37,11 @@ pricing-deep: ## Refresh pricing, fetching the large AWS offer files too (slow)
 
 test: ## Run backend + frontend tests
 	$(COMPOSE) -f $(COMPOSE_FILE) exec backend pytest -q
-	cd frontend && pnpm test --run
+	cd frontend && pnpm test
+
+e2e: ## Run the Playwright end-to-end suite (needs `make up && make seed` first)
+	cd frontend && pnpm exec playwright install --with-deps chromium
+	cd frontend && pnpm e2e
 
 lint: ## Run ruff + mypy (backend) and eslint (frontend)
 	$(COMPOSE) -f $(COMPOSE_FILE) exec backend ruff check cloudpilot
