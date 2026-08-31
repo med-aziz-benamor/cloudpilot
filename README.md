@@ -276,13 +276,14 @@ listed so nobody discovers them the hard way:
 | Cost tracking, agents, RAG advisor, forecasting | ✅ Working against the simulated estate |
 | Auth, RBAC, audit chain | ✅ Implemented and tested; production boot is guarded against placeholder secrets. Brute-force lockout, IP-spoofing and timing-side-channel fixes landed 2026-08-25 — see the session report |
 | Tenant isolation | ✅ Two independent layers (RBAC + ORM filter) over **every** org-scoped model — `metric_samples` joined the rest in migration `005`. See [security.md](docs/security.md#what-layer-2-covers) |
-| Live resource inventory (Azure, AWS) | ⚠️ Implemented but exercised far less than demo mode |
+| Live resource inventory | ⚠️ Azure and AWS implemented, but exercised far less than demo mode. **GCP is not implemented** — `Compute Engine aggregatedList()` is still a stub |
 | Live billing + metrics (all providers) | ❌ `NotImplementedError` by design — see above |
 | Setting an org's monthly budget | ✅ `GET`/`PATCH /api/v1/forecast/budget` (admin-only, audited) and a working control on the Forecast page |
 | Dashboard aggregate caching | ✅ Redis-backed, tenant-scoped, invalidated on write (`core/cache.py`) |
 | `make dev` on a machine other than the original | ✅ Fixed 2026-08-25 — the `ollama` volume is now a named Docker volume |
 | Backend tests on the host | ⚠️ Need Python 3.11; a newer interpreter fails at collection. Run them in the container |
-| Pricing provenance in the UI | ⚠️ Tracked per-rate in the backend, not yet surfaced on screen |
+| Pricing provenance in the UI | ✅ A per-recommendation derivation (both rates, their publisher, the as-of date) and a full rate card at Settings → Pricing, backed by `GET /api/v1/pricing/catalog` |
+| Frontend end-to-end tests | ✅ A committed Playwright suite (`make e2e`), run against a live stack. Not in CI — it needs a stack to run against |
 
 ---
 

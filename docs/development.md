@@ -78,7 +78,7 @@ pnpm dev
 docker compose exec backend pytest -q
 
 # Frontend
-cd frontend && pnpm test --run
+cd frontend && pnpm test
 
 # Everything (backend in-container + frontend on host)
 make test
@@ -94,6 +94,48 @@ the venv against a real 3.11:
 ```bash
 cd backend && poetry env use 3.11 && poetry install && poetry run pytest -q
 ```
+
+The DB-backed suites (tenant isolation, budget, RBAC) skip themselves unless
+`CLOUDPILOT_TEST_DB` points at a Postgres they may drop and recreate tables in:
+
+```bash
+docker compose exec -T postgres createdb -U cp cloudpilot_test   # once
+docker compose run --rm --no-deps \
+  -e CLOUDPILOT_TEST_DB="postgresql+asyncpg://cp:cp@postgres:5432/cloudpilot_test" \
+  backend pytest -p no:warnings
+```
+
+## End-to-end tests
+
+`frontend/e2e/` is a Playwright suite that drives a real browser against a real
+stack. Every spec in it corresponds to a bug that reached a running app and that
+no unit test could have caught — two screens disagreeing about the budget, a
+session bootstrap racing itself, an Advisor answer that had to be an honest error
+rather than an invented one.
+
+```bash
+make up && make migrate && make seed   # the suite needs a seeded tenant
+make e2e                               # installs chromium, then runs the suite
+```
+
+`make e2e` starts the Vite dev server itself but will **not** start the API: a
+suite that silently tests a half-running system is worse than one that refuses to
+start, so `e2e/global-setup.ts` checks `/health` first and tells you what to run.
+
+Ollama does **not** need to be running — `e2e/advisor.spec.ts` asserts the honest
+"model unavailable" notice, and skips itself if a model is actually available.
+
+Other useful forms:
+
+```bash
+cd frontend
+pnpm e2e:ui                            # the Playwright UI runner
+pnpm e2e e2e/budget.spec.ts            # one spec
+pnpm exec playwright show-trace test-results/<dir>/trace.zip   # a failure's trace
+```
+
+It is not wired into CI, which has no stack to run against; `make e2e` locally is
+the supported path.
 
 ## Linting & types
 
