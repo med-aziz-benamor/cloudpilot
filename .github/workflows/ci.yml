@@ -68,5 +68,8 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      - name: Vitest
+        run: pnpm test
+
       - name: Build
         run: pnpm build
