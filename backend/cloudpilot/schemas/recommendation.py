@@ -23,7 +23,12 @@ class RecommendationResponse(ResponseSchema):
     snoozed_until: datetime | None = None
     affected_resource_ids: list[uuid.UUID] = []
     affected_resource_names: list[str] = []
-    metadata: dict[str, Any] = Field(default_factory=dict, alias="metadata_json")
+    # ``validation_alias``, not ``alias``: the ORM column is ``metadata_json``, but
+    # FastAPI serialises response models by alias, so a plain alias would also leak
+    # that column name onto the wire as the field clients see. Matches chat.py.
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, validation_alias="metadata_json"
+    )
     created_at: datetime
 
 
