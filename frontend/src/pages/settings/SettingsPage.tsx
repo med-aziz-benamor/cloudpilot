@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ProviderBadge } from "@/components/domain/ProviderBadge";
+import { RateCardPanel } from "@/components/domain/RateCardPanel";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ export function SettingsPage() {
       <Tabs defaultValue="accounts">
         <TabsList>
           <TabsTrigger value="accounts">Cloud Accounts</TabsTrigger>
+          <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
@@ -83,6 +85,10 @@ export function SettingsPage() {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="pricing">
+          <RateCardPanel />
         </TabsContent>
 
         <TabsContent value="profile">

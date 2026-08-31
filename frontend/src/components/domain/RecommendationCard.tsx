@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Check, Clock, ExternalLink, X } from "lucide-react";
 
 import { AgentBadge } from "@/components/domain/AgentBadge";
+import { CalculationBasis } from "@/components/domain/CalculationBasis";
 import { ConfidencePill, StatusBadge } from "@/components/domain/SeverityPill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -112,6 +113,8 @@ export function RecommendationCard({
             )}
           </div>
         </div>
+
+        <CalculationBasis recommendation={r} />
       </Card>
     </motion.div>
   );
