@@ -78,6 +78,10 @@ class PricingCatalog:
     def skus(self) -> list[str]:
         return sorted(self._prices)
 
+    def entries(self) -> list[Price]:
+        """Every rate, ordered by provider then SKU — for exposing the whole card."""
+        return sorted(self._prices.values(), key=lambda p: (p.provider, p.sku))
+
     def __len__(self) -> int:
         return len(self._prices)
 

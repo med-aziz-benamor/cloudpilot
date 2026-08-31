@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 class PriceUnit(enum.StrEnum):
@@ -73,6 +73,12 @@ class Price:
         return f"${self.amount:,.4f}{unit} ({self.provider} {self.region}, {self.source.value})"
 
 
+#: How long a snapshot stays trustworthy. Providers revise list prices a few times
+#: a year, so a card older than a quarter is reported as stale rather than quietly
+#: used — the "visible, not silently trusted" half of the as-of promise above.
+STALE_AFTER_DAYS = 90
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogMeta:
     """Provenance for a whole snapshot."""
@@ -87,3 +93,13 @@ class CatalogMeta:
         if not self.total_count:
             return 0.0
         return self.api_verified_count / self.total_count * 100.0
+
+    @property
+    def age_days(self) -> int:
+        """Whole days since the snapshot was generated (never negative)."""
+        now = datetime.now(tz=self.generated_at.tzinfo or UTC)
+        return max(0, (now - self.generated_at).days)
+
+    @property
+    def is_stale(self) -> bool:
+        return self.age_days > STALE_AFTER_DAYS
