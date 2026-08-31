@@ -274,18 +274,20 @@ AWS_CACHE_WANTED: dict[str, dict[str, str]] = {
 #: their provenance to AWS_PRICE_LIST. Run it once on a fast link and commit the
 #: snapshot; the fetchers it uses are :func:`extract_aws_prices` and friends below.
 #:
-#: Sources: aws.amazon.com/{ec2,rds,elasticache,s3}/pricing — eu-west-1, on-demand,
-#: Linux, shared tenancy.
-AWS_LIST_PRICES: dict[str, tuple[float, PriceUnit]] = {
-    "t3.medium": (0.0456, PriceUnit.HOUR),
-    "m5.large": (0.1070, PriceUnit.HOUR),
-    "m5.xlarge": (0.2140, PriceUnit.HOUR),
-    "m5.2xlarge": (0.4280, PriceUnit.HOUR),
-    "db.m5.large": (0.1780, PriceUnit.HOUR),
-    "db.m5.xlarge": (0.3560, PriceUnit.HOUR),
-    "cache.m5.large": (0.1930, PriceUnit.HOUR),
-    "cache.m5.xlarge": (0.3860, PriceUnit.HOUR),
-    "s3_standard": (0.0230, PriceUnit.GB_MONTH),
+#: eu-west-1, on-demand, Linux, shared tenancy. The third element is the page the
+#: rate was read off: for a transcribed rate that page *is* the provenance, so it is
+#: recorded per SKU rather than as one blanket citation — an EC2 rate attributed to
+#: the S3 pricing page is not checkable, which defeats the point of recording it.
+AWS_LIST_PRICES: dict[str, tuple[float, PriceUnit, str]] = {
+    "t3.medium": (0.0456, PriceUnit.HOUR, "aws.amazon.com/ec2/pricing"),
+    "m5.large": (0.1070, PriceUnit.HOUR, "aws.amazon.com/ec2/pricing"),
+    "m5.xlarge": (0.2140, PriceUnit.HOUR, "aws.amazon.com/ec2/pricing"),
+    "m5.2xlarge": (0.4280, PriceUnit.HOUR, "aws.amazon.com/ec2/pricing"),
+    "db.m5.large": (0.1780, PriceUnit.HOUR, "aws.amazon.com/rds/pricing"),
+    "db.m5.xlarge": (0.3560, PriceUnit.HOUR, "aws.amazon.com/rds/pricing"),
+    "cache.m5.large": (0.1930, PriceUnit.HOUR, "aws.amazon.com/elasticache/pricing"),
+    "cache.m5.xlarge": (0.3860, PriceUnit.HOUR, "aws.amazon.com/elasticache/pricing"),
+    "s3_standard": (0.0230, PriceUnit.GB_MONTH, "aws.amazon.com/s3/pricing"),
 }
 
 
@@ -299,9 +301,9 @@ def aws_list_prices() -> dict[str, Price]:
             unit=unit,
             region=AWS_REGION,
             source=PriceSource.PUBLISHED_LIST_PRICE,
-            meter="aws.amazon.com/s3/pricing",
+            meter=page,
         )
-        for sku, (amount, unit) in AWS_LIST_PRICES.items()
+        for sku, (amount, unit, page) in AWS_LIST_PRICES.items()
     }
 
 
@@ -309,15 +311,16 @@ def aws_list_prices() -> dict[str, Price]:
 # GCP — no keyless rate API; published list prices, honestly flagged
 # ─────────────────────────────────────────────────────────────
 #: GCP's Cloud Billing Catalog API needs an API key, so these are transcribed from
-#: cloud.google.com/compute/all-pricing (europe-west1, on-demand) and are marked
-#: PUBLISHED_LIST_PRICE so they are never presented as API-verified.
-GCP_LIST_PRICES: dict[str, tuple[float, PriceUnit]] = {
-    "n2-standard-2": (0.107180, PriceUnit.HOUR),
-    "db-n1-standard-1": (0.057600, PriceUnit.HOUR),
-    "n2-standard-4": (0.214360, PriceUnit.HOUR),
-    "n2-standard-8": (0.428720, PriceUnit.HOUR),
-    "db-n1-standard-2": (0.115200, PriceUnit.HOUR),
-    "gcs_standard": (0.020000, PriceUnit.GB_MONTH),
+#: the public pricing pages (europe-west1, on-demand) and are marked
+#: PUBLISHED_LIST_PRICE so they are never presented as API-verified. As with AWS
+#: above, each rate records the page it was read off rather than one blanket URL.
+GCP_LIST_PRICES: dict[str, tuple[float, PriceUnit, str]] = {
+    "n2-standard-2": (0.107180, PriceUnit.HOUR, "cloud.google.com/compute/all-pricing"),
+    "n2-standard-4": (0.214360, PriceUnit.HOUR, "cloud.google.com/compute/all-pricing"),
+    "n2-standard-8": (0.428720, PriceUnit.HOUR, "cloud.google.com/compute/all-pricing"),
+    "db-n1-standard-1": (0.057600, PriceUnit.HOUR, "cloud.google.com/sql/pricing"),
+    "db-n1-standard-2": (0.115200, PriceUnit.HOUR, "cloud.google.com/sql/pricing"),
+    "gcs_standard": (0.020000, PriceUnit.GB_MONTH, "cloud.google.com/storage/pricing"),
 }
 
 
@@ -331,9 +334,9 @@ def gcp_prices() -> dict[str, Price]:
             unit=unit,
             region=GCP_REGION,
             source=PriceSource.PUBLISHED_LIST_PRICE,
-            meter="cloud.google.com/compute/all-pricing",
+            meter=page,
         )
-        for sku, (amount, unit) in GCP_LIST_PRICES.items()
+        for sku, (amount, unit, page) in GCP_LIST_PRICES.items()
     }
 
 

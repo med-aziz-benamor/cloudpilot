@@ -100,3 +100,49 @@ def test_provenance_is_attached_and_traceable() -> None:
     assert prov["region"]
     assert prov["as_of"]  # a rate with no as-of date cannot be judged stale
     assert pricing_provenance("no-such-sku") is None
+
+
+def test_every_rate_cites_a_meter() -> None:
+    """A rate with no meter cannot be checked against the publisher."""
+    for sku in get_catalog().skus():
+        price = get_catalog().get(sku)
+        assert price is not None
+        assert price.meter, f"{sku} records no meter"
+
+
+def test_transcribed_rates_cite_the_page_they_were_read_off() -> None:
+    """A transcribed rate's provenance *is* the page it came from.
+
+    Every AWS and GCP list price used to carry one blanket citation — the S3
+    pricing page for all nine AWS SKUs, the Compute page for GCP's SQL and storage
+    — so an EC2 rate pointed a reviewer at a page that does not contain it. Latent
+    while nothing displayed the field; wrong the moment the rate card did.
+    """
+    from cloudpilot.pricing.sources import aws_list_prices, gcp_prices
+
+    catalog = get_catalog()
+    for sku, expected in {**aws_list_prices(), **gcp_prices()}.items():
+        stored = catalog.get(sku)
+        if stored is None:
+            continue  # a --deep refresh replaced it with an API-verified rate
+        if stored.source is not expected.source:
+            continue
+        assert stored.meter == expected.meter, (
+            f"{sku} cites {stored.meter!r}, but is transcribed from {expected.meter!r}"
+        )
+
+
+def test_a_service_is_never_cited_against_another_services_page() -> None:
+    """The check that would have caught the blanket citation on its own."""
+    from cloudpilot.pricing.sources import AWS_LIST_PRICES
+
+    services = {
+        "t3.": "ec2",
+        "m5.": "ec2",
+        "db.": "rds",
+        "cache.": "elasticache",
+        "s3_": "s3",
+    }
+    for sku, (_, _, page) in AWS_LIST_PRICES.items():
+        service = next(v for k, v in services.items() if sku.startswith(k))
+        assert f"/{service}/" in page, f"{sku} is cited against {page}"
