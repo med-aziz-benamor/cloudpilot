@@ -94,7 +94,7 @@ The API never invokes scheduled agents inline — it only reads their persisted 
 `CACHE_PRICING_TTL` is defined but unused: the rate card is not fetched at
 request time at all, so it needs no expiry — it is a snapshot refreshed by `make pricing`.
 
-Three rules govern the dashboard cache, and `core/cache.py` exists to enforce them:
+Four rules govern the dashboard cache, and `core/cache.py` exists to enforce them:
 
 - **Every key is tenant-scoped.** A cache sits *in front of* the ORM tenant filter, so
   a key that was not org-scoped would serve one tenant's figures to another without
@@ -108,6 +108,14 @@ Three rules govern the dashboard cache, and `core/cache.py` exists to enforce th
   the KPI row disagreeing with what the user just did. Invalidation is hooked into
   recommendation status changes, cloud syncs, and agent runs that create
   recommendations.
+- **A cache hit must reproduce the computed answer exactly.** Responses are cached as
+  `model_dump(mode="json")` and read back through `cache.get_model()`, which validates
+  them into the response model. An entry that no longer validates (for example, written
+  by an older release before a schema change) is treated as a miss, not raised as a 500.
+  This rule exists because `/costs/breakdown` once cached its Pydantic models through
+  `json.dumps(default=str)`, which stored their *repr*: the first load worked and every
+  reload within the TTL failed. `tests/test_cache.py` and `e2e/costs.spec.ts`, which loads
+  every cached endpoint twice, guard it.
 
 ## Technology choices — rationale
 
@@ -162,4 +170,9 @@ the same family" is a modelling decision about the fleet, not a fact about prici
 Everything in `simulation/` is seeded per resource name, so a re-seed reproduces the
 same estate and a demo shows the same numbers twice.
 
-See [`security.md`](security.md) for the trust-boundary model.
+## Further reading
+
+- [`ai-agents.md`](ai-agents.md): each agent's algorithm, thresholds and failure modes, and the RAG pipeline
+- [`data-model.md`](data-model.md): every table, the partitioned metrics table, and the migration history
+- [`frontend.md`](frontend.md): screens, state management, the auth flow and the test suites
+- [`security.md`](security.md): the trust-boundary model
