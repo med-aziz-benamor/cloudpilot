@@ -107,6 +107,12 @@ curl -X PATCH localhost:8000/api/v1/recommendations/$ID/status \
   -d '{"status":"accepted"}'
 ```
 
+Each recommendation carries a `metadata` object holding the basis it was derived
+from — for a rightsizing recommendation, both SKUs' rates and the provenance of
+each (see [Pricing](#pricing)); for a cost anomaly, the expected and actual billed
+amounts. The UI renders this as the "how this was calculated" disclosure on the
+card.
+
 ---
 
 ## Forecast
@@ -114,6 +120,47 @@ curl -X PATCH localhost:8000/api/v1/recommendations/$ID/status \
 ### `GET /forecast?horizon_days=30`
 Reads the latest persisted Prophet snapshot (30/60/90). Returns `404` if the
 ForecastAgent has not produced one yet.
+
+| Method | Path | Permission |
+|--------|------|-----------|
+| GET | `/forecast/budget` | read |
+| PATCH | `/forecast/budget` | budget.manage (admin) |
+
+`monthly_budget_usd` is nullable end to end: with none set the API returns `null`,
+`over_budget` is false, and the UI says "Not set" rather than falling back to a
+number nobody chose. `PATCH` is audited with the previous and new value, because it
+moves the threshold every overrun alert in the platform is measured against.
+
+```bash
+curl -X PATCH localhost:8000/api/v1/forecast/budget \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"budget_usd":8600}'
+```
+
+---
+
+## Pricing
+
+### `GET /pricing/catalog`
+The rate card every quoted saving is derived from, with per-rate and
+snapshot-level provenance. Authenticated, but **not** org-scoped: it is public
+rate-card data, identical for every tenant.
+
+| Field | Meaning |
+|-------|---------|
+| `generated_at` / `age_days` | when the snapshot was taken, and how old it is |
+| `is_stale` / `stale_after_days` | true once past the freshness window (90 days) |
+| `api_verified_count` / `_pct` | how much of the card came from a provider API |
+| `rates[].source` | `azure_retail_api`, `aws_price_list` or `published_list_price` |
+| `rates[].api_verified` | derived from `source` — fetched, not transcribed |
+| `rates[].meter` | the provider-side meter or pricing page the rate was read off |
+
+```bash
+curl localhost:8000/api/v1/pricing/catalog -H "Authorization: Bearer $TOKEN"
+```
+
+Refresh the snapshot with `make pricing` (or `make pricing-deep` to pull the large
+AWS offer files and upgrade those rates to `aws_price_list`).
 
 ---
 

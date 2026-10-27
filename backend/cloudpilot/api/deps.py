@@ -103,8 +103,19 @@ def require_roles(
 
 
 def client_ip(request: Request) -> str:
-    """Best-effort client IP (honours X-Forwarded-For from the reverse proxy)."""
+    """Best-effort client IP, trusting only the reverse proxy's own hop.
+
+    nginx sets `X-Real-IP` to `$remote_addr` on every proxied request (see
+    nginx.conf) — a client cannot spoof it, since nginx overwrites rather than
+    appends. `X-Forwarded-For` is attacker-suppliable at its *first* value (a
+    client can send its own), so if `X-Real-IP` is absent we fall back to the
+    *last* segment of `X-Forwarded-For` — the one nginx itself appended via
+    `$proxy_add_x_forwarded_for` — never the first.
+    """
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
-        return fwd.split(",")[0].strip()
+        return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"

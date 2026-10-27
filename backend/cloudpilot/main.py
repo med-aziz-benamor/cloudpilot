@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -22,12 +23,12 @@ from prometheus_client import (
     generate_latest,
 )
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
-from cloudpilot.api.v1.router import api_router
-from cloudpilot.config import settings
+from starlette.responses import Response
 
 # Import tenant module so the ORM listener is installed at import time.
 import cloudpilot.core.tenant  # noqa: F401
+from cloudpilot.api.v1.router import api_router
+from cloudpilot.config import settings
 
 # ─── Prometheus metrics ───
 REQUEST_COUNT = Counter(
@@ -43,7 +44,7 @@ REQUEST_LATENCY = Histogram(
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown lifecycle."""
     logger.info("CloudPilot starting (env={}, demo={})", settings.APP_ENV, settings.DEMO_MODE)
     try:
@@ -79,7 +80,9 @@ def create_app() -> FastAPI:
 
     # ─── Request ID + metrics + timing middleware ───
     @app.middleware("http")
-    async def observability_middleware(request: Request, call_next):
+    async def observability_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
         start = time.perf_counter()
         response = await call_next(request)
@@ -93,7 +96,9 @@ def create_app() -> FastAPI:
 
     # ─── Security headers middleware ───
     @app.middleware("http")
-    async def security_headers(request: Request, call_next):
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
         response.headers["Strict-Transport-Security"] = (
             "max-age=63072000; includeSubDomains; preload"
@@ -116,14 +121,18 @@ def create_app() -> FastAPI:
 
     # ─── Exception handlers ───
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    async def http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": {"code": exc.status_code, "message": exc.detail}},
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
@@ -136,7 +145,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception):
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.exception("Unhandled error on {} {}", request.method, request.url.path)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -148,7 +157,7 @@ def create_app() -> FastAPI:
 
     # ─── Health & metrics ───
     @app.get("/health", tags=["system"])
-    async def health() -> dict:
+    async def health() -> dict[str, str]:
         return {"status": "ok", "service": "cloudpilot", "version": "1.0.0"}
 
     @app.get("/metrics", tags=["system"])

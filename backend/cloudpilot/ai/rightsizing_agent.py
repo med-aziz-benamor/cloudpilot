@@ -10,7 +10,7 @@ Algorithm:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.ai.base_agent import AgentBase
-from cloudpilot.ai.pricing import next_smaller_sku, sku_hourly_price
+from cloudpilot.ai.pricing import next_smaller_sku, pricing_provenance, sku_hourly_price
 from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.metric_sample import MetricSample
 from cloudpilot.models.recommendation import (
@@ -62,7 +62,7 @@ class RightSizingAgent(AgentBase):
         )
 
         existing = await self._existing_resource_ids(db, organization_id)
-        since = datetime.now(timezone.utc) - timedelta(days=_METRIC_DAYS)
+        since = datetime.now(UTC) - timedelta(days=_METRIC_DAYS)
         created = 0
 
         for res in resources:
@@ -80,21 +80,24 @@ class RightSizingAgent(AgentBase):
                 continue
             current_price = sku_hourly_price(res.sku)
             target_price = sku_hourly_price(target_sku)
-            saving = max(0.0, (current_price - target_price) * _HOURS_PER_MONTH)
+            # A node pool downsizes every node, so the saving scales with the count.
+            nodes = max(1, res.node_count)
+            saving = max(0.0, (current_price - target_price) * _HOURS_PER_MONTH * nodes)
             if saving <= 0:
                 continue
 
             bonus = (_CPU_THRESHOLD - p95_cpu) / _CPU_THRESHOLD * 0.2
             confidence = min(0.92, 0.7 + max(0.0, bonus))
 
+            scale = f" x{nodes}" if nodes > 1 else ""
             rec = Recommendation(
                 organization_id=organization_id,
                 cloud_account_id=res.cloud_account_id,
                 agent=AgentType.RIGHTSIZING,
                 title=f"Underutilized resource — {res.name}",
                 description=(
-                    f"{res.sku} running at P95 CPU {p95_cpu:.0f}%, P95 RAM "
-                    f"{p95_mem:.0f}%. Recommend downsizing to {target_sku}."
+                    f"{res.sku}{scale} running at P95 CPU {p95_cpu:.0f}%, P95 RAM "
+                    f"{p95_mem:.0f}%. Recommend downsizing to {target_sku}{scale}."
                 ),
                 estimated_saving_usd=Decimal(str(round(saving, 2))),
                 confidence=round(confidence, 2),
@@ -103,10 +106,18 @@ class RightSizingAgent(AgentBase):
                 metadata_json={
                     "current_sku": res.sku,
                     "target_sku": target_sku,
+                    "node_count": nodes,
                     "p95_cpu": round(p95_cpu, 1),
                     "p95_mem": round(p95_mem, 1),
                     "current_price_usd_hr": round(current_price, 4),
                     "target_price_usd_hr": round(target_price, 4),
+                    "billable_hours_per_month": _HOURS_PER_MONTH,
+                    # Provenance for both rates, so the saving can be traced back to
+                    # the provider's published rate card rather than taken on faith.
+                    "pricing": {
+                        "current": pricing_provenance(res.sku),
+                        "target": pricing_provenance(target_sku),
+                    },
                 },
             )
             db.add(rec)

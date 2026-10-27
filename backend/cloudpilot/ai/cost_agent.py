@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from decimal import Decimal
 
 import numpy as np
+import numpy.typing as npt
 from loguru import logger
 from sklearn.ensemble import IsolationForest
 from sqlalchemy import select
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.ai.base_agent import AgentBase
 from cloudpilot.models.billing_entry import BillingEntry
-from cloudpilot.models.cloud_account import CloudAccount, CloudProvider
+from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.recommendation import (
     AgentType,
     Recommendation,
@@ -32,6 +33,29 @@ from cloudpilot.models.recommendation import (
 
 _LOOKBACK_DAYS = 60
 _MIN_POINTS = 14
+
+#: Materiality gates applied *after* statistical detection. IsolationForest and the
+#: 2σ Z-score decide whether a day is anomalous; these decide whether it is worth a
+#: human's attention.
+#:
+#: The percentage gate used to be 50, calibrated when costs were fabricated
+#: arithmetically (``cost *= 4.4`` applied to a whole series, which trivially cleared
+#: any percentage). Costs are now ``published_rate × simulated_usage``, so an anomaly
+#: is physical and confined to one resource — but detection groups by
+#: (account, service), which means the spike arrives *diluted by its siblings*.
+#:
+#: Measured on the seeded estate: the rds-production incident (a real 4x event) is
+#: only 20% of its service group and lands at +57%, clearing the old gate by 7
+#: points. Adding a single comparable RDS instance drops it to +48% and the
+#: recommendation disappears — while its Z-score stays pinned at 5.12. The
+#: percentage was eroding with estate size even though the signal was not.
+#:
+#: Sweeping the gate from 50% down to 10% surfaced zero additional unexplained
+#: anomalies, so the gate was buying no noise reduction to pay for that. Lowered to
+#: 25% and paired with an absolute floor, which is the gate that actually expresses
+#: "material" — a 30% spike on a $2/day service is noise no matter the percentage.
+_MIN_PCT_ABOVE_BASELINE = 25.0
+_MIN_DELTA_USD = 5.0
 
 
 class CostAgent(AgentBase):
@@ -79,7 +103,7 @@ class CostAgent(AgentBase):
 
             for idx in flagged:
                 anomaly_date = dates[idx]
-                key = (service, anomaly_date.isoformat())
+                key = (str(account_id), service, anomaly_date.isoformat())
                 if key in existing:
                     continue
                 actual = float(values[idx])
@@ -88,7 +112,8 @@ class CostAgent(AgentBase):
                     continue
                 delta = actual - baseline
                 pct = (delta / baseline) * 100.0
-                if pct < 50:  # only surface materially large spikes
+                # Both gates must hold: materially large *and* materially expensive.
+                if pct < _MIN_PCT_ABOVE_BASELINE or delta < _MIN_DELTA_USD:
                     continue
                 std = float(np.std(values)) or 1.0
                 z = delta / std
@@ -126,7 +151,7 @@ class CostAgent(AgentBase):
         logger.info("CostAgent created {} recommendations for org {}", created, organization_id)
         return created
 
-    def _detect(self, dates: list[date], values: np.ndarray) -> list[int]:
+    def _detect(self, dates: list[date], values: npt.NDArray[np.float64]) -> list[int]:
         """Return indices flagged by IsolationForest ∪ Z-score(>2σ)."""
         flagged: set[int] = set()
 
@@ -152,7 +177,7 @@ class CostAgent(AgentBase):
 
     async def _pending_anomaly_dates(
         self, db: AsyncSession, organization_id: uuid.UUID
-    ) -> set[tuple[str, str]]:
+    ) -> set[tuple[str, str, str]]:
         rows = (
             (await db.execute(
                 select(Recommendation).where(
@@ -162,9 +187,13 @@ class CostAgent(AgentBase):
                 )
             )).scalars().all()
         )
-        out: set[tuple[str, str]] = set()
+        # Scoped by account (via the row's own cloud_account_id column, not
+        # metadata_json) as well as service+date — otherwise two accounts with
+        # an anomaly in the same service on the same day collide, and the
+        # second account's real anomaly is silently dropped as a "duplicate".
+        out: set[tuple[str, str, str]] = set()
         for r in rows:
             md = r.metadata_json or {}
             if md.get("service") and md.get("anomaly_date"):
-                out.add((md["service"], md["anomaly_date"]))
+                out.add((str(r.cloud_account_id), md["service"], md["anomaly_date"]))
         return out

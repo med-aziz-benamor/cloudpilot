@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -154,7 +154,7 @@ class ResourceService:
         costs = await self._monthly_cost_by_resource()
 
         # Metrics
-        since = datetime.now(timezone.utc) - timedelta(days=14)
+        since = datetime.now(UTC) - timedelta(days=14)
         metric_series: list[ResourceMetricSeries] = []
         for metric in ("cpu_percent", "memory_percent"):
             rows = (
@@ -188,7 +188,7 @@ class ResourceService:
         ).all()
         cost_trend = [
             MetricPoint(
-                timestamp=datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc),
+                timestamp=datetime.combine(d, datetime.min.time(), tzinfo=UTC),
                 value=float(c),
             )
             for d, c in trend_rows
@@ -198,7 +198,10 @@ class ResourceService:
             await self.db.execute(
                 select(func.count(Recommendation.id)).where(
                     Recommendation.organization_id == self.org_id,
-                    Recommendation.affected_resource_ids.any(resource_id),
+                    # ARRAY.any() takes a value, but the stub types it as the
+                    # relationship-level PropComparator.any() which expects a
+                    # criterion. The SQL is correct; the stub is not.
+                    Recommendation.affected_resource_ids.any(resource_id),  # type: ignore[arg-type]
                     Recommendation.status == RecommendationStatus.PENDING,
                 )
             )

@@ -126,8 +126,14 @@ class ChatService:
             session_id=session.id,
             role=MessageRole.ASSISTANT,
             content=result["content"],
-            citations_json=result.get("citations") or None,
-            tool_calls_json=result.get("tool_calls") or None,
+            # ChatMessageResponse's `citations`/`tool_calls` fields always
+            # serialize as a list (default_factory=list) — Pydantic only
+            # applies that default when the field is *absent*, not when it's
+            # explicitly None, so `or None` here would 500 on serialization
+            # every time there's nothing to cite (no RAG docs, no connected
+            # cloud accounts) instead of returning an empty list.
+            citations_json=result.get("citations") or [],
+            tool_calls_json=result.get("tool_calls") or [],
         )
         self.db.add(assistant_msg)
 

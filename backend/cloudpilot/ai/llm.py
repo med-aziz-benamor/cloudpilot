@@ -1,7 +1,7 @@
 """LLM client abstraction — local Ollama (default) with an OpenAI fallback.
 
 The provider is selected once at construction: OpenAI is used only when an API key
-is configured AND demo mode is off; otherwise the local Qwen 2.5 4B model via Ollama
+is configured AND demo mode is off; otherwise the local Qwen 2.5 3B model via Ollama
 is used (the privacy-by-design default that fits an 8 GB MacBook Air M1).
 """
 
@@ -34,14 +34,38 @@ class LLMClient:
         model is unreachable (keeps the demo resilient offline)."""
         try:
             if self.provider == "openai":
-                return await self._openai_generate(messages, tools)
-            return await self._ollama_generate(messages, tools)
+                answer = await self._openai_generate(messages, tools)
+            else:
+                answer = await self._ollama_generate(messages, tools)
         except Exception as exc:
             logger.warning("LLM generation failed ({}), using fallback: {}", self.provider, exc)
             return self._fallback(messages)
 
+        if not answer:
+            # A successful call with no usable content — e.g. a tool-calling
+            # model responding with `content: null` because it wants to call a
+            # tool we don't execute. This is not an exception, so the except
+            # branch above never sees it; without this guard callers like
+            # ArchitectAgent._build_citations receive None and crash.
+            logger.warning("LLM returned an empty response ({}), using fallback", self.provider)
+            return self._fallback(messages)
+        return answer
+
     async def embed(self, text: str) -> list[float]:
         """Return an embedding vector for ``text`` via the Ollama embed model."""
+        vector, _ = await self.embed_with_status(text)
+        return vector
+
+    async def embed_with_status(self, text: str) -> tuple[list[float], bool]:
+        """Embed ``text``, reporting whether the vector is real.
+
+        Returns ``(vector, is_real)``. On failure the hash fallback keeps the demo
+        working offline, but the vector is meaningless for similarity — it exists so
+        callers do not crash, not so they can trust the result. Any caller that
+        *caches* what it derives from an embedding must check the flag, or a
+        transient Ollama outage gets frozen into that cache for the process
+        lifetime. See ``rag.engine.retrieve``.
+        """
         try:
             async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
                 resp = await client.post(
@@ -49,14 +73,14 @@ class LLMClient:
                     json={"model": settings.OLLAMA_EMBED_MODEL, "prompt": text},
                 )
                 resp.raise_for_status()
-                return resp.json()["embedding"]
+                return resp.json()["embedding"], True
         except Exception as exc:
             logger.warning("Embedding failed, using hash fallback: {}", exc)
-            return self._hash_embedding(text)
+            return self._hash_embedding(text), False
 
     async def _ollama_generate(
         self, messages: list[dict[str, str]], tools: list[dict[str, Any]] | None
-    ) -> str:
+    ) -> str | None:
         async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
             payload: dict[str, Any] = {
                 "model": settings.OLLAMA_MODEL,
@@ -70,11 +94,14 @@ class LLMClient:
                 f"{settings.OLLAMA_BASE_URL}/api/chat", json=payload
             )
             resp.raise_for_status()
-            return resp.json()["message"]["content"]
+            # May be null when a tool-calling model wants to call a tool;
+            # generate() treats a falsy answer as a fallback case.
+            content: str | None = resp.json()["message"]["content"]
+            return content
 
     async def _openai_generate(
         self, messages: list[dict[str, str]], tools: list[dict[str, Any]] | None
-    ) -> str:
+    ) -> str | None:
         async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
             payload: dict[str, Any] = {
                 "model": "gpt-4o-mini",
@@ -89,20 +116,33 @@ class LLMClient:
                 json=payload,
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            content: str | None = resp.json()["choices"][0]["message"]["content"]
+            return content
 
     @staticmethod
     def _fallback(messages: list[dict[str, str]]) -> str:
-        """Deterministic offline answer so the chat UI always responds."""
-        question = next(
-            (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-        )
+        """Answer shown when the LLM is unreachable.
+
+        This is *not* a model answer, and it must never be mistaken for one. Two rules:
+
+        * It says so, first thing. A canned paragraph dressed up as a grounded answer
+          (with a citation chip attached) is worse than an honest error.
+        * It never echoes the prompt back. The last ``user`` message is the fully
+          assembled prompt — context documents, live infrastructure data and all — not
+          the question the user typed, so quoting it leaked the entire prompt into the
+          chat window.
+        """
+        last = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        # Recover the real question from the assembled prompt (see rag/prompts.py).
+        marker = "USER QUESTION:"
+        question = last.rsplit(marker, 1)[-1].strip() if marker in last else last.strip()
         return (
-            "Based on the available infrastructure data and best-practice guidance, "
-            "here is a concise assessment.\n\n"
-            f"You asked: \"{question.strip()[:200]}\". "
-            "Review the cited sources below for the full context. "
-            "(Local LLM offline — showing a grounded summary from retrieved documents.) [1]"
+            "⚠️ The local language model is unavailable, so this is not a generated "
+            "answer.\n\n"
+            f'Your question — "{question[:180]}" — was not sent to a model. '
+            "The retrieved source documents are listed below and may still be useful. "
+            "Start Ollama (and confirm OLLAMA_MODEL matches a pulled model) to get a "
+            "real answer."
         )
 
     @staticmethod

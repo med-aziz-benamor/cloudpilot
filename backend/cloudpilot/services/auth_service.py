@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 from loguru import logger
@@ -22,6 +23,11 @@ from cloudpilot.core.security import (
 from cloudpilot.models.organization import Organization, OrgPlan
 from cloudpilot.models.user import User, UserRole
 from cloudpilot.schemas.auth import LoginRequest, RegisterRequest
+
+# Precomputed at import time so a login against a nonexistent email still pays
+# for one real bcrypt verify — otherwise response timing reveals which emails
+# are registered (verify_password is only reached when `user` is truthy).
+_DUMMY_PASSWORD_HASH = hash_password(uuid4().hex)
 
 
 class AuthService:
@@ -85,8 +91,19 @@ class AuthService:
             await self.db.execute(select(User).where(User.email == payload.email))
         ).scalar_one_or_none()
 
-        if not user or not verify_password(payload.password, user.password_hash):
-            await self._record_failed_login(payload.email, ip)
+        # Always run the bcrypt check, even for a nonexistent user, against a
+        # fixed dummy hash — otherwise the missing verify_password call makes
+        # "no such account" measurably faster than "wrong password".
+        password_hash = user.password_hash if user else _DUMMY_PASSWORD_HASH
+        password_ok = verify_password(payload.password, password_hash)
+
+        if not user or not password_ok:
+            still_allowed = await self._record_failed_login(payload.email, ip)
+            if not still_allowed:
+                raise HTTPException(
+                    status.HTTP_423_LOCKED,
+                    detail="Too many failed attempts for this account. Try again later.",
+                )
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password."
             )
@@ -94,7 +111,8 @@ class AuthService:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Account is disabled.")
 
         await rate_limit.reset_rate_limit(ident)
-        user.last_login_at = datetime.now(timezone.utc)
+        await rate_limit.reset_rate_limit(f"login:email:{payload.email}")
+        user.last_login_at = datetime.now(UTC)
 
         access = create_access_token(user.id, user.organization_id, user.role.value)
         refresh = create_refresh_token(user.id)
@@ -132,10 +150,14 @@ class AuthService:
     async def logout(self, refresh_token: str | None, jti: str, exp: int) -> None:
         if refresh_token:
             await rate_limit.consume_refresh_token(refresh_token)
-        ttl = max(1, exp - int(datetime.now(timezone.utc).timestamp()))
+        ttl = max(1, exp - int(datetime.now(UTC).timestamp()))
         await rate_limit.revoke_jti(jti, ttl)
 
-    async def _record_failed_login(self, email: str, ip: str | None) -> None:
+    async def _record_failed_login(self, email: str, ip: str | None) -> bool:
+        """Record a failed attempt and return False once the email is locked out."""
         email_ident = f"login:email:{email}"
-        await rate_limit.check_rate_limit(email_ident, 10, 3600)
+        allowed = await rate_limit.check_rate_limit(
+            email_ident, settings.LOGIN_MAX_ATTEMPTS_PER_EMAIL, settings.LOGIN_LOCKOUT_SECONDS
+        )
         logger.warning("auth.login.failed email={} ip={}", email, ip)
+        return allowed

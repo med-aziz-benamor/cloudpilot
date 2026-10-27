@@ -30,6 +30,12 @@ pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
 
+# ─── Playwright (e2e) ─────────────────────────────────────
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/
+
 # ─── Environment & secrets ────────────────────────────────
 .env
 .env.*

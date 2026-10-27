@@ -7,9 +7,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,13 +19,13 @@ if TYPE_CHECKING:
     from cloudpilot.models.resource import Resource
 
 
-class CloudProvider(str, enum.Enum):
+class CloudProvider(enum.StrEnum):
     AZURE = "azure"
     AWS = "aws"
     GCP = "gcp"
 
 
-class CloudAccountStatus(str, enum.Enum):
+class CloudAccountStatus(enum.StrEnum):
     ACTIVE = "active"
     ERROR = "error"
     PAUSED = "paused"
@@ -52,13 +51,13 @@ class CloudAccount(BaseModel):
         nullable=False,
     )
     provider: Mapped[CloudProvider] = mapped_column(
-        SAEnum(CloudProvider, name="cloud_provider"), nullable=False
+        SAEnum(CloudProvider, name="cloud_provider", native_enum=False), nullable=False
     )
     account_identifier: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     credentials_enc: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[CloudAccountStatus] = mapped_column(
-        SAEnum(CloudAccountStatus, name="cloud_account_status"),
+        SAEnum(CloudAccountStatus, name="cloud_account_status", native_enum=False),
         default=CloudAccountStatus.ACTIVE,
         nullable=False,
     )

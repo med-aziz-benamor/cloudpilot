@@ -19,7 +19,8 @@ import json
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import bcrypt
 import jwt
@@ -44,7 +45,7 @@ class TokenPayload:
 
 def create_access_token(user_id: uuid.UUID, org_id: uuid.UUID, role: str) -> str:
     """Mint a signed access token for the given principal."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "sub": str(user_id),
         "org": str(org_id),
@@ -127,18 +128,21 @@ def _fernet(key: bytes | None = None) -> Fernet:
     return Fernet(key or settings.fernet_key_bytes)
 
 
-def encrypt_credential(data: dict) -> str:
+def encrypt_credential(data: dict[str, Any]) -> str:
     """Encrypt a credentials dict to an opaque token string."""
     return _fernet().encrypt(json.dumps(data).encode("utf-8")).decode("utf-8")
 
 
-def decrypt_credential(blob: str) -> dict:
+def decrypt_credential(blob: str) -> dict[str, Any]:
     """Decrypt a credentials token back into a dict.
 
     Raises:
         InvalidToken: if the blob is tampered or the key is wrong.
     """
-    return json.loads(_fernet().decrypt(blob.encode("utf-8")).decode("utf-8"))
+    creds: dict[str, Any] = json.loads(
+        _fernet().decrypt(blob.encode("utf-8")).decode("utf-8")
+    )
+    return creds
 
 
 def rotate_key(old_key: bytes, new_key: bytes, blob: str) -> str:

@@ -8,14 +8,16 @@ not create duplicates.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from loguru import logger
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.cloud.base import get_adapter
+from cloudpilot.core import cache
 from cloudpilot.core.security import decrypt_credential
 from cloudpilot.database import AsyncSessionLocal
 from cloudpilot.models.billing_entry import BillingEntry
@@ -39,10 +41,13 @@ async def sync_account(db: AsyncSession, account: CloudAccount) -> dict[str, int
     billing = await _sync_billing(db, account, adapter, resources)
     metrics = await _sync_metrics(db, adapter, resources)
 
-    account.last_synced_at = datetime.now(timezone.utc)
+    account.last_synced_at = datetime.now(UTC)
     account.status = CloudAccountStatus.ACTIVE
     account.error_message = None
     await db.flush()
+    # Resources, billing and metrics all just changed underneath the cached
+    # dashboard aggregates for this tenant.
+    await cache.invalidate_org(account.organization_id)
     logger.info(
         "Synced account {} ({}): {} resources, {} billing, {} metrics",
         account.display_name,
@@ -55,7 +60,7 @@ async def sync_account(db: AsyncSession, account: CloudAccount) -> dict[str, int
 
 
 async def _sync_resources(
-    db: AsyncSession, account: CloudAccount, adapter
+    db: AsyncSession, account: CloudAccount, adapter: Any
 ) -> dict[str, Resource]:
     dtos = await adapter.get_resources()
     existing = (
@@ -65,11 +70,12 @@ async def _sync_resources(
     )
     by_pid = {r.provider_resource_id: r for r in existing}
     out: dict[str, Resource] = {}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for dto in dtos:
         res = by_pid.get(dto.provider_resource_id)
         if res is None:
             res = Resource(
+                organization_id=account.organization_id,
                 cloud_account_id=account.id,
                 provider_resource_id=dto.provider_resource_id,
             )
@@ -78,6 +84,7 @@ async def _sync_resources(
         res.service = dto.service
         res.region = dto.region
         res.sku = dto.sku
+        res.node_count = dto.node_count
         res.tags_json = dto.tags
         res.is_active = True
         res.last_seen_at = now
@@ -87,7 +94,7 @@ async def _sync_resources(
 
 
 async def _sync_billing(
-    db: AsyncSession, account: CloudAccount, adapter, resources: dict[str, Resource]
+    db: AsyncSession, account: CloudAccount, adapter: Any, resources: dict[str, Resource]
 ) -> int:
     end = date.today()
     start = end - timedelta(days=_BILLING_DAYS)
@@ -105,6 +112,7 @@ async def _sync_billing(
             resource_id = resources[dto.provider_resource_id].id
         db.add(
             BillingEntry(
+                organization_id=account.organization_id,
                 cloud_account_id=account.id,
                 resource_id=resource_id,
                 usage_date=dto.usage_date,
@@ -118,9 +126,11 @@ async def _sync_billing(
     return len(dtos)
 
 
-async def _sync_metrics(db: AsyncSession, adapter, resources: dict[str, Resource]) -> int:
+async def _sync_metrics(
+    db: AsyncSession, adapter: Any, resources: dict[str, Resource]
+) -> int:
     count = 0
-    cutoff = datetime.now(timezone.utc) - timedelta(days=_METRIC_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=_METRIC_DAYS)
     for pid, res in resources.items():
         if not res.sku:  # only collect metrics for sized resources
             continue
@@ -135,6 +145,7 @@ async def _sync_metrics(db: AsyncSession, adapter, resources: dict[str, Resource
             for s in samples:
                 db.add(
                     MetricSample(
+                        organization_id=res.organization_id,
                         resource_id=res.id,
                         metric_name=s.metric_name,
                         timestamp=s.timestamp,

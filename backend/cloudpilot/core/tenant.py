@@ -12,12 +12,11 @@ a query can never return another tenant's rows.
 from __future__ import annotations
 
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, with_loader_criteria
-
-from cloudpilot.database import AsyncSessionLocal
 
 # Holds the active organization id for the duration of a request / task.
 _current_org_id: ContextVar[uuid.UUID | None] = ContextVar("current_org_id", default=None)
@@ -44,9 +43,9 @@ class TenantContext:
 
     def __init__(self, org_id: uuid.UUID | None) -> None:
         self._org_id = org_id
-        self._token = None
+        self._token: Token[uuid.UUID | None] | None = None
 
-    def __enter__(self) -> "TenantContext":
+    def __enter__(self) -> TenantContext:
         self._token = _current_org_id.set(self._org_id)
         return self
 
@@ -54,7 +53,7 @@ class TenantContext:
         if self._token is not None:
             _current_org_id.reset(self._token)
 
-    async def __aenter__(self) -> "TenantContext":
+    async def __aenter__(self) -> TenantContext:
         return self.__enter__()
 
     async def __aexit__(self, *exc: object) -> None:
@@ -64,7 +63,7 @@ class TenantContext:
 def _install_listener() -> None:
     """Register the global ORM execute listener on the session factory."""
 
-    @event.listens_for(AsyncSessionLocal.sync_session_class, "do_orm_execute")
+    @event.listens_for(AsyncSession.sync_session_class, "do_orm_execute")
     def _tenant_filter(state: ORMExecuteState) -> None:
         # Only constrain plain SELECTs; never touch writes or relationship loads.
         if not state.is_select or state.is_column_load or state.is_relationship_load:
@@ -72,18 +71,26 @@ def _install_listener() -> None:
         org_id = _current_org_id.get()
         if org_id is None:
             return
-        # Apply the criterion to every mapped entity that declares organization_id.
+        # Apply the criterion to EVERY mapped entity that declares organization_id.
+        # Stopping at the first one (as this used to) left every later org-scoped
+        # entity in the statement unfiltered — a two-entity select bound to org A
+        # would happily return org B's rows on the trailing side. An FK-correlated
+        # join masks that, which is why it went unnoticed.
+        seen: set[type] = set()
         for mapper in state.all_mappers:
-            if "organization_id" in mapper.columns:
-                entity = mapper.entity
-                state.statement = state.statement.options(
-                    with_loader_criteria(
-                        entity,
-                        lambda cls: cls.organization_id == org_id,
-                        include_aliases=True,
-                    )
+            if "organization_id" not in mapper.columns:
+                continue
+            entity = mapper.entity
+            if entity in seen:
+                continue
+            seen.add(entity)
+            state.statement = state.statement.options(
+                with_loader_criteria(
+                    entity,
+                    lambda cls: cls.organization_id == org_id,
+                    include_aliases=True,
                 )
-                break
+            )
 
 
 _install_listener()

@@ -8,9 +8,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Float, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -18,14 +17,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from cloudpilot.database import BaseModel
 
 
-class AgentType(str, enum.Enum):
+class AgentType(enum.StrEnum):
     COST = "cost"
     RIGHTSIZING = "rightsizing"
     FORECAST = "forecast"
     ARCHITECT = "architect"
 
 
-class RecommendationStatus(str, enum.Enum):
+class RecommendationStatus(enum.StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
@@ -55,7 +54,7 @@ class Recommendation(BaseModel):
         nullable=True,
     )
     agent: Mapped[AgentType] = mapped_column(
-        SAEnum(AgentType, name="agent_type"), nullable=False
+        SAEnum(AgentType, name="agent_type", native_enum=False), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -64,7 +63,7 @@ class Recommendation(BaseModel):
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[RecommendationStatus] = mapped_column(
-        SAEnum(RecommendationStatus, name="recommendation_status"),
+        SAEnum(RecommendationStatus, name="recommendation_status", native_enum=False),
         default=RecommendationStatus.PENDING,
         nullable=False,
     )

@@ -22,7 +22,10 @@ def get_redis() -> redis.Redis:
     """Return a lazily-initialized async Redis client."""
     global _client
     if _client is None:
-        _client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        # redis-py ships no annotation for from_url.
+        _client = redis.from_url(  # type: ignore[no-untyped-call]
+            settings.REDIS_URL, decode_responses=True
+        )
     return _client
 
 
@@ -40,7 +43,7 @@ async def check_rate_limit(identifier: str, limit: int, window_seconds: int) -> 
         current = await client.incr(key)
         if current == 1:
             await client.expire(key, window_seconds)
-        return current <= limit
+        return bool(current <= limit)
     except Exception as exc:  # pragma: no cover - resilience
         logger.warning("Rate limiter unavailable, failing open: {}", exc)
         return True
@@ -64,11 +67,21 @@ async def revoke_jti(jti: str, ttl_seconds: int) -> None:
 
 
 async def is_revoked(jti: str) -> bool:
-    """Return True if a token id has been revoked."""
+    """Return True if a token id has been revoked.
+
+    Unlike the rest of this module, this check fails *closed*: if Redis is
+    unreachable we cannot prove a token hasn't been revoked, so we treat it as
+    revoked rather than silently accepting a possibly-logged-out token for the
+    rest of its access-token TTL. Both compose files already gate the backend's
+    own startup on Redis health, so this mainly bites during a live Redis
+    outage — an availability cost accepted in exchange for not silently
+    honouring revoked credentials.
+    """
     try:
-        return await get_redis().exists(f"revoked:{jti}") == 1
-    except Exception:  # pragma: no cover
-        return False
+        return bool(await get_redis().exists(f"revoked:{jti}") == 1)
+    except Exception as exc:  # pragma: no cover - resilience
+        logger.warning("Revocation check unavailable, failing closed: {}", exc)
+        return True
 
 
 async def store_refresh_token(token: str, user_id: str, ttl_seconds: int) -> None:
@@ -80,13 +93,16 @@ async def store_refresh_token(token: str, user_id: str, ttl_seconds: int) -> Non
 
 
 async def consume_refresh_token(token: str) -> str | None:
-    """Return the bound user id and atomically delete the token (rotation)."""
+    """Return the bound user id and atomically delete the token (rotation).
+
+    Uses GETDEL rather than GET-then-DELETE: the latter is a TOCTOU race where
+    two concurrent refresh calls for the same token can both read the value
+    before either deletes it, letting the token be used twice — defeating the
+    single-use rotation this function exists to enforce.
+    """
     try:
         client = get_redis()
-        key = f"refresh:{token}"
-        user_id = await client.get(key)
-        if user_id:
-            await client.delete(key)
+        user_id: str | None = await client.getdel(f"refresh:{token}")
         return user_id
     except Exception:  # pragma: no cover
         return None

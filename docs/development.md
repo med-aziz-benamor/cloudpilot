@@ -11,6 +11,40 @@
    ```bash
    make dev      # postgres, redis, chromadb, ollama, backend, scheduler, frontend
    ```
+
+   The `ollama` service stores its models in a named Docker volume
+   (`ollama_models`), so this works unmodified on any machine. Pull the models
+   once the stack is up:
+   `docker compose exec ollama ollama pull qwen2.5:3b && docker compose exec ollama ollama pull nomic-embed-text`.
+
+   > **On Apple Silicon, run Ollama on the host instead.** Docker Desktop does
+   > not pass the GPU through, so the containerized Ollama runs the 3B model on
+   > pure CPU. Measured on an 8-core M-series machine: **~460 s for a single RAG
+   > answer** — longer than `LLM_TIMEOUT_SECONDS`, so the Cloud Advisor times
+   > out and serves its offline fallback instead of a real answer, while pegging
+   > every core it is allowed for the whole attempt.
+   >
+   > The container is capped (4 CPUs / 3 GB, model unloaded after 60 s idle) so
+   > it cannot take the whole machine, but the fix is to run Ollama natively,
+   > where it gets Metal acceleration:
+   >
+   > ```bash
+   > brew install ollama
+   > ollama serve                                   # in its own terminal
+   > ollama pull qwen2.5:3b && ollama pull nomic-embed-text
+   > ```
+   >
+   > Then point the stack at it — in `.env`:
+   >
+   > ```
+   > OLLAMA_BASE_URL=http://host.docker.internal:11434
+   > ```
+   >
+   > and skip the container: `docker compose up -d --scale ollama=0`.
+   >
+   > Everything except the Cloud Advisor works fine with no Ollama at all — the
+   > RAG engine falls back to hash embeddings and the chat returns an explicit
+   > "model unavailable" notice rather than a fabricated answer.
 3. **Seed demo data** (second terminal)
    ```bash
    make seed
@@ -40,15 +74,68 @@ pnpm dev
 ## Running tests
 
 ```bash
-# Backend (unit tests run with no DB/infra needed)
-cd backend && poetry run pytest -q
+# Backend — run inside the container (this is the supported path)
+docker compose exec backend pytest -q
 
 # Frontend
-cd frontend && pnpm test --run
+cd frontend && pnpm test
 
-# Everything
+# Everything (backend in-container + frontend on host)
 make test
 ```
+
+The backend tests need no database or running infra, but they **do** need the project's
+dependency set on **Python 3.11** (`pyproject.toml` pins `^3.11`, mypy targets 3.11).
+Running `poetry run pytest` on a host with a newer interpreter fails at collection —
+Python 3.14 has no wheels for `scikit-learn`/`prophet`, so `poetry install` never
+completes and every test module dies on a missing import. Use the container, or create
+the venv against a real 3.11:
+
+```bash
+cd backend && poetry env use 3.11 && poetry install && poetry run pytest -q
+```
+
+The DB-backed suites (tenant isolation, budget, RBAC) skip themselves unless
+`CLOUDPILOT_TEST_DB` points at a Postgres they may drop and recreate tables in:
+
+```bash
+docker compose exec -T postgres createdb -U cp cloudpilot_test   # once
+docker compose run --rm --no-deps \
+  -e CLOUDPILOT_TEST_DB="postgresql+asyncpg://cp:cp@postgres:5432/cloudpilot_test" \
+  backend pytest -p no:warnings
+```
+
+## End-to-end tests
+
+`frontend/e2e/` is a Playwright suite that drives a real browser against a real
+stack. Every spec in it corresponds to a bug that reached a running app and that
+no unit test could have caught — two screens disagreeing about the budget, a
+session bootstrap racing itself, an Advisor answer that had to be an honest error
+rather than an invented one.
+
+```bash
+make up && make migrate && make seed   # the suite needs a seeded tenant
+make e2e                               # installs chromium, then runs the suite
+```
+
+`make e2e` starts the Vite dev server itself but will **not** start the API: a
+suite that silently tests a half-running system is worse than one that refuses to
+start, so `e2e/global-setup.ts` checks `/health` first and tells you what to run.
+
+Ollama does **not** need to be running — `e2e/advisor.spec.ts` asserts the honest
+"model unavailable" notice, and skips itself if a model is actually available.
+
+Other useful forms:
+
+```bash
+cd frontend
+pnpm e2e:ui                            # the Playwright UI runner
+pnpm e2e e2e/budget.spec.ts            # one spec
+pnpm exec playwright show-trace test-results/<dir>/trace.zip   # a failure's trace
+```
+
+It is not wired into CI, which has no stack to run against; `make e2e` locally is
+the supported path.
 
 ## Linting & types
 
@@ -77,6 +164,25 @@ Schema changes go through Alembic only — never hand-written SQL against the DB
 3. Add the provider to the `CloudProvider` enum + a new Alembic migration.
 4. Add a mock blueprint in `utils/mock_data.py` and wizard fields in
    `frontend/src/pages/settings/ConnectCloudPage.tsx`.
+
+## Refreshing the pricing snapshot
+
+Costs are `published_rate × simulated_usage`, and the rate card is a committed snapshot
+at `backend/cloudpilot/pricing/data/pricing_snapshot.json` — not a live lookup. Refresh
+it when rates drift:
+
+```bash
+make pricing        # Azure Retail Prices API (live) + AWS/GCP published list prices
+make pricing-deep   # also pulls AWS's bulk offer files (tens of MB, slow)
+```
+
+Both are keyless — no cloud account or spend required. Commit the regenerated snapshot:
+a pinned rate card is what makes the seeded dataset reproducible. Re-seed afterwards
+(`make seed`) so billing rows are recomputed against the new rates.
+
+Adding a SKU means adding it to the snapshot **and**, if right-sizing should be able to
+recommend shrinking it, adding a downsize pair in `pricing/catalog.py`. Each hop must be
+a genuine halving within the same instance family, or the "saving" is meaningless.
 
 ## Adding a new AI agent
 

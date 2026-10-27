@@ -25,8 +25,18 @@ class MetricSample(Base):
     __tablename__ = "metric_samples"
     __table_args__ = (
         Index("ix_metric_samples_resource_metric", "resource_id", "metric_name"),
+        Index("ix_metric_samples_org_resource", "organization_id", "resource_id"),
     )
 
+    #: Denormalized from the owning resource (migration 005). Carried directly
+    #: so the ORM tenant filter in ``core/tenant.py`` engages on this table —
+    #: it inspects mappers for this column and cannot follow ``resource_id``
+    #: to find one. See docs/security.md.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     resource_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("resources.id", ondelete="CASCADE"),

@@ -7,6 +7,8 @@ procedure documented in ``docs/security.md``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from cryptography.fernet import Fernet, MultiFernet
 
 from cloudpilot.core.security import decrypt_credential, encrypt_credential, rotate_key
@@ -31,10 +33,11 @@ def reencrypt_blob(blob: str, old_key: str, new_key: str) -> str:
     return rotate_key(old_key.encode(), new_key.encode(), blob)
 
 
-def verify_with_multi(blob: str, keys: list[str]) -> dict:
+def verify_with_multi(blob: str, keys: list[str]) -> dict[str, Any]:
     """Decrypt using a MultiFernet (supports a window where both old+new keys are
     accepted during rotation step 2)."""
     import json
 
     mf = MultiFernet([Fernet(k.encode()) for k in keys])
-    return json.loads(mf.decrypt(blob.encode()).decode())
+    creds: dict[str, Any] = json.loads(mf.decrypt(blob.encode()).decode())
+    return creds

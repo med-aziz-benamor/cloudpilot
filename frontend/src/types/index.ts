@@ -145,6 +145,53 @@ export interface Recommendation {
   created_at: string;
 }
 
+// ─── Pricing provenance ───
+// Every saving CloudPilot quotes is derived from a published rate. These types
+// mirror the backend's pricing catalog so the number on screen can be traced back
+// to the publisher instead of being taken on faith.
+
+export type PriceUnit = "hour" | "gb_month";
+export type PriceSource =
+  | "azure_retail_api"
+  | "aws_price_list"
+  | "published_list_price";
+
+/** Where one rate used in a calculation came from. */
+export interface PricingProvenance {
+  rate: number;
+  unit: PriceUnit;
+  currency: string;
+  region: string;
+  source: PriceSource;
+  meter: string;
+  as_of: string;
+}
+
+/** One entry of the rate card. */
+export interface PriceEntry {
+  sku: string;
+  provider: CloudProvider;
+  amount: number;
+  unit: PriceUnit;
+  region: string;
+  source: PriceSource;
+  api_verified: boolean;
+  meter: string;
+  currency: string;
+}
+
+export interface PricingCatalog {
+  generated_at: string;
+  age_days: number;
+  is_stale: boolean;
+  stale_after_days: number;
+  regions: Record<string, string>;
+  total_count: number;
+  api_verified_count: number;
+  api_verified_pct: number;
+  rates: PriceEntry[];
+}
+
 export interface SavingsSummary {
   total_potential_usd: number;
   accepted_usd: number;
@@ -201,7 +248,8 @@ export interface ForecastResponse {
   horizon_days: number;
   current_mtd_usd: number;
   projected_month_end_usd: number;
-  budget_usd: number;
+  /** null when the tenant has not set a monthly budget. */
+  budget_usd: number | null;
   over_budget: boolean;
   overrun_pct: number;
   next_90d_usd: number;

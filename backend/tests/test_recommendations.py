@@ -30,3 +30,39 @@ def test_downsize_actually_saves() -> None:
     current = sku_hourly_price("Standard_D4s_v3")
     target = sku_hourly_price(next_smaller_sku("Standard_D4s_v3"))
     assert current > target > 0
+
+
+def test_metadata_reaches_clients_under_its_schema_name() -> None:
+    """The calculation basis must serialise as ``metadata``, not ``metadata_json``.
+
+    FastAPI dumps response models with ``by_alias=True``, so a plain ``alias`` — used
+    to map the ORM column — also renames the field on the wire. That put the API's
+    key at ``metadata_json`` while the frontend type declared ``metadata``, and the
+    provenance the agents record simply never arrived under the name anything read.
+    Nothing caught it because nothing consumed the field until the UI surfaced it.
+    """
+    import uuid
+    from datetime import datetime
+
+    from cloudpilot.models.recommendation import AgentType, RecommendationStatus
+    from cloudpilot.schemas.recommendation import RecommendationResponse
+
+    class Row:
+        id = uuid.uuid4()
+        agent = AgentType.RIGHTSIZING
+        title = "Underutilized resource"
+        description = ""
+        estimated_saving_usd = 244.46
+        confidence = 0.9
+        status = RecommendationStatus.PENDING
+        snoozed_until = None
+        affected_resource_ids: list[uuid.UUID] = []
+        affected_resource_names: list[str] = []
+        metadata_json = {"pricing": {"current": {"source": "azure_retail_api"}}}
+        created_at = datetime.now().astimezone()
+
+    dumped = RecommendationResponse.model_validate(Row()).model_dump(by_alias=True)
+
+    assert "metadata" in dumped
+    assert "metadata_json" not in dumped
+    assert dumped["metadata"]["pricing"]["current"]["source"] == "azure_retail_api"

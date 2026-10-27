@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cloudpilot.api.deps import get_current_user, get_db, require_permission
 from cloudpilot.cloud.sync_scheduler import sync_account_by_id
+from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.user import User
 from cloudpilot.schemas.cloud_account import (
     CloudAccountCreate,
@@ -23,7 +24,7 @@ router = APIRouter()
 
 
 async def _to_response(
-    service: CloudAccountService, account
+    service: CloudAccountService, account: CloudAccount
 ) -> CloudAccountResponse:
     extra = await service.enrich(account)
     return CloudAccountResponse(

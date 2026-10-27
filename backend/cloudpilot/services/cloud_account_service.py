@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import HTTPException, status
 from loguru import logger
@@ -98,7 +99,7 @@ class CloudAccountService:
         resources = await adapter.get_resources()
         return True, "Connection successful.", len(resources)
 
-    async def enrich(self, account: CloudAccount) -> dict:
+    async def enrich(self, account: CloudAccount) -> dict[str, Any]:
         """Compute resource count + monthly cost for an account response."""
         resource_count = (
             await self.db.execute(

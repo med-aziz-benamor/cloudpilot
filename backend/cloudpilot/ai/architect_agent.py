@@ -2,10 +2,12 @@
 
 Runs per user chat message:
 1. Retrieve top-5 docs from ChromaDB for the question.
-2. Resolve any referenced resources and assemble live infrastructure context.
-3. Build the prompt and call the LLM (tool definitions advertised).
-4. Execute any tool calls, parse the answer, extract citations.
-5. Return the answer + citations + tool-call trace to the chat service.
+2. Resolve any referenced resources and assemble live infrastructure context
+   (a hand-rolled lookup, logged as a "tool_calls" trace for the chat UI —
+   this is not LLM tool-calling; the LLM never chooses these calls itself).
+3. Build the prompt and call the LLM.
+4. Parse the answer and extract citations.
+5. Return the answer + citations + the trace from step 2 to the chat service.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cloudpilot.ai.base_agent import AgentBase
 from cloudpilot.ai.llm import LLMClient
 from cloudpilot.ai.rag.engine import get_rag_engine
-from cloudpilot.ai.rag.prompts import TOOL_DEFINITIONS, build_messages
+from cloudpilot.ai.rag.prompts import build_messages
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.cloud_account import CloudAccount
 from cloudpilot.models.recommendation import AgentType
@@ -53,7 +55,7 @@ class ArchitectAgent(AgentBase):
         )
 
         messages = build_messages(question, docs, live_data, history)
-        answer = await self.llm.generate(messages, tools=TOOL_DEFINITIONS)
+        answer = await self.llm.generate(messages)
 
         citations = self._build_citations(answer, docs)
         logger.info(
@@ -70,9 +72,9 @@ class ArchitectAgent(AgentBase):
 
     async def _gather_live_context(
         self, db: AsyncSession, organization_id: uuid.UUID, question: str
-    ) -> tuple[str, list[dict]]:
+    ) -> tuple[str, list[dict[str, Any]]]:
         """Resolve referenced resources and produce a live-data summary + tool trace."""
-        tool_calls: list[dict] = []
+        tool_calls: list[dict[str, Any]] = []
         parts: list[str] = []
 
         account_ids = (
@@ -130,10 +132,12 @@ class ArchitectAgent(AgentBase):
 
         return "\n".join(parts), tool_calls
 
-    def _build_citations(self, answer: str, docs: list[dict]) -> list[dict]:
+    def _build_citations(
+        self, answer: str | None, docs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Map [n] markers in the answer back to retrieved document metadata."""
-        used = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
-        citations: list[dict] = []
+        used = {int(n) for n in re.findall(r"\[(\d+)\]", answer or "")}
+        citations: list[dict[str, Any]] = []
         for i, doc in enumerate(docs, start=1):
             if not used or i in used:
                 citations.append(

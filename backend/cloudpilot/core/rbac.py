@@ -20,6 +20,10 @@ PERMISSIONS: dict[str, set[UserRole]] = {
     "chat.use": {UserRole.ADMIN, UserRole.ANALYST},
     # Manage cloud account credentials — admins only.
     "cloud_accounts.manage": {UserRole.ADMIN},
+    # Set the organization's monthly budget — admins only. It changes what
+    # every overrun alert in the platform is measured against, so it sits with
+    # the other org-wide configuration rather than with analyst workflows.
+    "budget.manage": {UserRole.ADMIN},
     # Manage users — admins only.
     "users.manage": {UserRole.ADMIN},
     # View the audit log — admins only.

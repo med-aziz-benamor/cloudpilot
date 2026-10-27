@@ -7,9 +7,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from cloudpilot.models.organization import Organization
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     """RBAC roles. ``admin`` > ``analyst`` > ``viewer``."""
 
     ADMIN = "admin"
@@ -43,7 +42,7 @@ class User(BaseModel):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="user_role"),
+        SAEnum(UserRole, name="user_role", native_enum=False),
         default=UserRole.ANALYST,
         nullable=False,
     )

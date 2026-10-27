@@ -11,6 +11,7 @@ from cloudpilot.api.v1 import (
     cloud_accounts,
     costs,
     forecast,
+    pricing,
     recommendations,
     resources,
 )
@@ -26,5 +27,6 @@ api_router.include_router(
     recommendations.router, prefix="/recommendations", tags=["recommendations"]
 )
 api_router.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
+api_router.include_router(pricing.router, prefix="/pricing", tags=["pricing"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])

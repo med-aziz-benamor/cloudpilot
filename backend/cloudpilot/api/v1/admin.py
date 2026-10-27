@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
@@ -81,7 +83,7 @@ async def audit_log(
 async def verify_audit(
     user: User = Depends(require_permission("audit.read")),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Recompute the audit hash chain and report integrity."""
     ok = await verify_chain(db, user.organization_id)
     return {"intact": ok}
@@ -119,7 +121,7 @@ async def trigger_agent(
     agent: AgentType,
     user: User = Depends(require_permission("agents.trigger")),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Manually run a scheduled agent for the caller's organization."""
     runner = _AGENTS.get(agent)
     if runner is None:

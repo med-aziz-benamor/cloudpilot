@@ -5,7 +5,7 @@ from cloudpilot.models.audit_log import AuditLog
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.chat_message import ChatMessage, MessageRole
 from cloudpilot.models.chat_session import ChatSession
-from cloudpilot.models.cloud_account import CloudAccount, CloudProvider, CloudAccountStatus
+from cloudpilot.models.cloud_account import CloudAccount, CloudAccountStatus, CloudProvider
 from cloudpilot.models.forecast_snapshot import ForecastSnapshot
 from cloudpilot.models.metric_sample import MetricSample
 from cloudpilot.models.organization import Organization, OrgPlan

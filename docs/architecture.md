@@ -43,6 +43,12 @@ logic, services own the ORM, and the AI layer is decoupled from the request path
 - **Cloud layer** — one adapter per provider implementing a read-only contract
   (`get_resources`, `get_billing`, `get_metrics`, `validate_credentials`). In
   `DEMO_MODE` (or when credentials are absent) adapters return deterministic mock data.
+  Live `get_billing`/`get_metrics` raise `NotImplementedError` on every provider by
+  design — see the README's "Connecting Real Cloud Accounts".
+- **Pricing + simulation** — `pricing/` holds a provenance-carrying rate card read from
+  a committed snapshot (`pricing/data/pricing_snapshot.json`, refreshed by
+  `python -m cloudpilot.pricing.refresh`); `simulation/` invents *usage* only and
+  multiplies it by that rate card. See "Where the numbers come from" below.
 - **Data layer** — PostgreSQL is the system of record (with a range-partitioned
   `metric_samples` table); Redis backs caching, rate limiting and JWT revocation;
   ChromaDB stores document embeddings for RAG.
@@ -78,24 +84,95 @@ The API never invokes scheduled agents inline — it only reads their persisted 
 
 ## Caching strategy
 
-| Cache | Backend | TTL |
-|-------|---------|-----|
-| Dashboard aggregates | Redis (`dashboard:{org}:{period}`) | 5 min |
-| Pricing catalog | Redis | 1 week |
-| JWT revocation list | Redis (`revoked:{jti}`) | token expiry |
-| RAG query results | in-process LRU (100 entries) | process life |
+| Cache | Backend | TTL | Status |
+|-------|---------|-----|--------|
+| JWT revocation list | Redis (`revoked:{jti}`) | token expiry | implemented (`core/rate_limit.py`) |
+| RAG query results | in-process dict, keyed `(query, k)`, capped at 100 | process life | implemented (`ai/rag/engine.py`) |
+| Pricing catalog | `functools.lru_cache` over the committed snapshot | process life | implemented (`pricing/catalog.py`) |
+| Dashboard aggregates | Redis (`dashboard:{org}:{name}[:part]`) | `CACHE_DASHBOARD_TTL` (5 min) | implemented (`core/cache.py`) — covers the cost summary, breakdown and timeseries |
+
+`CACHE_PRICING_TTL` is defined but unused: the rate card is not fetched at
+request time at all, so it needs no expiry — it is a snapshot refreshed by `make pricing`.
+
+Four rules govern the dashboard cache, and `core/cache.py` exists to enforce them:
+
+- **Every key is tenant-scoped.** A cache sits *in front of* the ORM tenant filter, so
+  a key that was not org-scoped would serve one tenant's figures to another without
+  `core/tenant.py` ever running. `org_key()` is the only way to build a key and always
+  takes an organization id.
+- **It fails open.** Redis being unreachable degrades to a slower correct answer, never
+  an error — deliberately the opposite of the auth surface, where `is_revoked` fails
+  *closed* (see [security.md](security.md)).
+- **It is invalidated on write, not just on TTL.** Actioning a recommendation changes
+  the summary's pending count and savings total; waiting out five minutes would leave
+  the KPI row disagreeing with what the user just did. Invalidation is hooked into
+  recommendation status changes, cloud syncs, and agent runs that create
+  recommendations.
+- **A cache hit must reproduce the computed answer exactly.** Responses are cached as
+  `model_dump(mode="json")` and read back through `cache.get_model()`, which validates
+  them into the response model. An entry that no longer validates (for example, written
+  by an older release before a schema change) is treated as a miss, not raised as a 500.
+  This rule exists because `/costs/breakdown` once cached its Pydantic models through
+  `json.dumps(default=str)`, which stored their *repr*: the first load worked and every
+  reload within the TTL failed. `tests/test_cache.py` and `e2e/costs.spec.ts`, which loads
+  every cached endpoint twice, guard it.
 
 ## Technology choices — rationale
 
 - **FastAPI over Django/Flask** — native async, automatic OpenAPI, Pydantic v2 validation.
 - **SQLAlchemy 2.0 async** — single ORM for the whole app; the tenant listener gives
   defense-in-depth that a raw-SQL approach could not.
-- **ChromaDB (embedded) over Qdrant/Pinecone** — zero extra infra, proven in EchoLearn.
-- **Ollama + Qwen 2.5 4B** — privacy-by-design local inference that fits 8 GB RAM;
-  OpenAI is an optional fallback only.
+- **ChromaDB over Qdrant/Pinecone** — one small container, proven in EchoLearn. Pinned to
+  `chromadb/chroma:0.5.23`: `:latest` dropped the v1 API the pinned 0.5 client speaks, so
+  the server image and the Python client must move together.
+- **Ollama + Qwen 2.5 3B** — privacy-by-design local inference that fits 8 GB RAM;
+  OpenAI is an optional fallback only. On CPU a 3B model routinely needs more than a
+  minute, hence `LLM_TIMEOUT_SECONDS=180` — too low a timeout does not error, it
+  silently routes every answer to the offline fallback.
 - **Prophet over ARIMA/LSTM** — robust to missing data and weekly seasonality with
   minimal tuning.
 - **IsolationForest + Z-score** — unsupervised anomaly detection that needs no labels.
 - **React + Vite over Next.js** — no SSR requirement; sub-second HMR; full control of the SPA.
 
-See [`security.md`](security.md) for the trust-boundary model.
+## Where the numbers come from
+
+The invariant: **CloudPilot never invents a price.** It invents *usage* and multiplies
+by a published rate.
+
+```
+pricing/sources.py   → fetch rates from public, keyless pricing APIs
+pricing/refresh.py   → write pricing/data/pricing_snapshot.json  (make pricing)
+pricing/catalog.py   → load the snapshot, lru_cached, each Price carrying its
+                       PriceSource (azure_retail_api | published_list_price) + as-of date
+        ↓
+simulation/fleet.py  → what the estate is: resources, SKUs, node counts, regions
+simulation/engine.py → what it did: hours run, GB stored, CPU/RAM samples
+        ↓
+billing_entry rows = published_rate × simulated_usage
+        ↓
+CostAgent / RightSizingAgent / ForecastAgent read those rows
+```
+
+Two consequences worth stating, because they are the point of the design:
+
+- **Anomalies are physical, not arithmetic.** The demo's Kubernetes spike is not
+  `cost *= 4.4`; it is `aks-prod-cluster` going 4 → 18 nodes for three days, and the
+  extra spend is exactly what 14 more `Standard_D4s_v3` nodes cost. CostAgent's
+  root-cause narrative is therefore *true* of the estate it describes.
+- **Savings are real deltas.** "Downsize `Standard_D4s_v3` → `Standard_D2s_v3`, save
+  $88/month" is the genuine gap between two Azure rates, not a chosen number.
+
+The snapshot is committed deliberately: the AWS offer files are tens of MB, the demo
+must work offline, and a pinned rate card makes the seeded dataset reproducible.
+Downsize pairs live in `catalog.py` rather than the rate card — "the next size down in
+the same family" is a modelling decision about the fleet, not a fact about pricing.
+
+Everything in `simulation/` is seeded per resource name, so a re-seed reproduces the
+same estate and a demo shows the same numbers twice.
+
+## Further reading
+
+- [`ai-agents.md`](ai-agents.md): each agent's algorithm, thresholds and failure modes, and the RAG pipeline
+- [`data-model.md`](data-model.md): every table, the partitioned metrics table, and the migration history
+- [`frontend.md`](frontend.md): screens, state management, the auth flow and the test suites
+- [`security.md`](security.md): the trust-boundary model

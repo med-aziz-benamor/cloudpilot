@@ -38,7 +38,12 @@ services:
     restart: unless-stopped
 
   chromadb:
-    image: chromadb/chroma:latest
+    # Pinned deliberately, and must stay in lockstep with the `chromadb` client pinned
+    # in backend/pyproject.toml. `:latest` drifted to a 1.x server that removed the v1
+    # API the 0.5 client speaks, so every connection 410'd and the RAG engine silently
+    # fell back to its in-memory store — the knowledge base looked fine but never
+    # persisted. Bump both together or not at all.
+    image: chromadb/chroma:0.5.23
     container_name: cloudpilot-chromadb
     ports:
       - "8001:8000"
@@ -49,15 +54,35 @@ services:
       ANONYMIZED_TELEMETRY: "FALSE"
     restart: unless-stopped
 
+  # Local LLM. Capped deliberately: Docker Desktop passes no GPU through on
+  # Apple Silicon, so this runs a 3B model on pure CPU and will otherwise
+  # saturate every core it is allowed for minutes at a time. Measured on an
+  # 8-core M-series: ~460s for one RAG answer, which is slower than the
+  # request timeout — the Advisor falls back rather than answering.
+  #
+  # For a genuinely usable Advisor, run Ollama on the *host* instead (it gets
+  # Metal acceleration there) and point the backend at it:
+  #   brew install ollama && ollama serve
+  #   OLLAMA_BASE_URL=http://host.docker.internal:11434
+  # See docs/development.md.
   ollama:
     image: ollama/ollama:latest
     container_name: cloudpilot-ollama
     ports:
       - "11434:11434"
     volumes:
-      - /Volumes/AzizBNA SSD/ollama/models:/root/.ollama/models
+      - ollama_models:/root/.ollama/models
     environment:
       OLLAMA_HOST: 0.0.0.0
+      # Keep one core free for the rest of the stack and the machine.
+      OLLAMA_NUM_PARALLEL: "1"
+      # Unload the model shortly after use instead of holding ~2 GB resident.
+      OLLAMA_KEEP_ALIVE: "60s"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 3g
     restart: unless-stopped
 
   backend:
@@ -75,7 +100,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: "8000"
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Override in .env to point at a host-run Ollama (much faster on
+      # Apple Silicon, which gets Metal there but not inside Docker):
+      #   OLLAMA_BASE_URL=http://host.docker.internal:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
     ports:
       - "8000:8000"
     volumes:
@@ -104,7 +132,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: "8000"
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Override in .env to point at a host-run Ollama (much faster on
+      # Apple Silicon, which gets Metal there but not inside Docker):
+      #   OLLAMA_BASE_URL=http://host.docker.internal:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
     volumes:
       - ./backend:/app
     depends_on:
@@ -159,3 +190,4 @@ volumes:
   redis_data:
   chroma_data:
   grafana_data:
+  ollama_models:

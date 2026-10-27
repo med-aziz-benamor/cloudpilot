@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cloudpilot.config import settings
+from cloudpilot.core import cache
 from cloudpilot.models.billing_entry import BillingEntry
 from cloudpilot.models.cloud_account import CloudAccount, CloudProvider
 from cloudpilot.models.recommendation import (
@@ -19,6 +21,7 @@ from cloudpilot.models.recommendation import (
 from cloudpilot.models.resource import Resource
 from cloudpilot.schemas.cost import (
     AnomalyEntry,
+    CostBreakdownResponse,
     CostSummary,
     CostTimeseriesPoint,
     CostTimeseriesResponse,
@@ -42,6 +45,14 @@ class CostService:
         return {a.id: a for a in rows}
 
     async def get_summary(self) -> CostSummary:
+        key = cache.org_key(self.org_id, "summary")
+        if (hit := await cache.get_model(key, CostSummary)) is not None:
+            return hit
+        summary = await self._compute_summary()
+        await cache.set_json(key, summary.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
+        return summary
+
+    async def _compute_summary(self) -> CostSummary:
         accounts = await self._accounts()
         if not accounts:
             return CostSummary(
@@ -85,27 +96,54 @@ class CostService:
             )
         ).scalar_one()
 
-        score = self._optimization_score(mtd, float(savings))
+        # COALESCE(..., 0) means the driver never returns NULL here, but the
+        # column is nullable so the static type is Decimal | None.
+        savings_usd = float(savings or 0)
+        score = self._optimization_score(mtd, savings_usd)
         return CostSummary(
             mtd_usd=round(mtd, 2),
             projected_month_end_usd=round(projected, 2),
             last_month_usd=round(last_full, 2),
             delta_pct=round(delta_pct, 1),
-            potential_savings_usd=round(float(savings), 2),
+            potential_savings_usd=round(savings_usd, 2),
             optimization_score=score,
             connected_clouds=len({a.provider for a in accounts.values()}),
             pending_recommendations=int(pending),
         )
 
-    async def get_breakdown(self) -> dict:
+    async def get_breakdown(self) -> CostBreakdownResponse:
+        key = cache.org_key(self.org_id, "breakdown")
+        if (hit := await cache.get_model(key, CostBreakdownResponse)) is not None:
+            return hit
+        breakdown = await self._compute_breakdown()
+        await cache.set_json(
+            key, breakdown.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL
+        )
+        return breakdown
+
+    async def _compute_breakdown(self) -> CostBreakdownResponse:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:
-            return {"by_provider": [], "by_service": [], "by_region": []}
+            return CostBreakdownResponse(by_provider=[], by_service=[], by_region=[])
 
         today = date.today()
         month_start = today.replace(day=1)
         last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+        # Region lives on the resource, not the billing row, so join through it. A
+        # billing row with no resource (rare) is bucketed as "unassigned" rather than
+        # dropped, so the region totals still sum to the provider totals.
+        region_by_resource: dict[uuid.UUID, str] = {
+            row.id: row.region
+            for row in (
+                await self.db.execute(
+                    select(Resource.id, Resource.region).where(
+                        Resource.cloud_account_id.in_(account_ids)
+                    )
+                )
+            ).all()
+        }
 
         rows = (
             await self.db.execute(
@@ -114,6 +152,7 @@ class CostService:
                     BillingEntry.service,
                     BillingEntry.usage_date,
                     BillingEntry.cost_usd,
+                    BillingEntry.resource_id,
                 ).where(
                     BillingEntry.cloud_account_id.in_(account_ids),
                     BillingEntry.usage_date >= last_month_start,
@@ -126,12 +165,13 @@ class CostService:
         svc_last: dict[tuple[str, CloudProvider], float] = defaultdict(float)
         region_total: dict[str, float] = defaultdict(float)
 
-        for acc_id, service, usage_date, cost in rows:
+        for acc_id, service, usage_date, cost, resource_id in rows:
             provider = accounts[acc_id].provider
             c = float(cost)
             if usage_date >= month_start:
                 prov_total[provider] += c
                 svc_mtd[(service, provider)] += c
+                region_total[region_by_resource.get(resource_id) or "unassigned"] += c
             else:
                 svc_last[(service, provider)] += c
 
@@ -164,9 +204,21 @@ class CostService:
             {"region": region, "cost_usd": round(v, 2)}
             for region, v in sorted(region_total.items(), key=lambda x: x[1], reverse=True)
         ]
-        return {"by_provider": by_provider, "by_service": by_service, "by_region": by_region}
+        return CostBreakdownResponse(
+            by_provider=by_provider, by_service=by_service, by_region=by_region
+        )
 
     async def get_timeseries(self, period_days: int = 90) -> CostTimeseriesResponse:
+        # The period is part of the key: the 7/30/90-day views are different
+        # answers to different questions and must not share an entry.
+        key = cache.org_key(self.org_id, "timeseries", period_days)
+        if (hit := await cache.get_model(key, CostTimeseriesResponse)) is not None:
+            return hit
+        series = await self._compute_timeseries(period_days)
+        await cache.set_json(key, series.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
+        return series
+
+    async def _compute_timeseries(self, period_days: int = 90) -> CostTimeseriesResponse:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:
@@ -278,7 +330,9 @@ class CostService:
         return out
 
     # ─── helpers ───
-    async def _sum_between(self, account_ids, start: date, end: date) -> float:
+    async def _sum_between(
+        self, account_ids: list[uuid.UUID], start: date, end: date
+    ) -> float:
         total = (
             await self.db.execute(
                 select(func.coalesce(func.sum(BillingEntry.cost_usd), 0)).where(

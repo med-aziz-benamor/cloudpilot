@@ -46,9 +46,80 @@ Cloud providers           read-only IAM roles
 
 Roles: `admin` > `analyst` > `viewer`. The permission matrix lives in `core/rbac.py`.
 Layer 1 is the `require_permission` dependency. Layer 2 is the SQLAlchemy
-`do_orm_execute` listener (`core/tenant.py`) which appends
-`WHERE organization_id = :current_org` to every SELECT — bypassing layer 1 still cannot
-leak another tenant's data.
+`do_orm_execute` listener (`core/tenant.py`), which appends
+`WHERE organization_id = :current_org` to every SELECT against an entity that
+**declares an `organization_id` column** — and, since 2026-07-20, to *every* such
+entity in a statement rather than only the first (it used to `break` after one, so a
+multi-entity select left the trailing side unfiltered).
+
+### What layer 2 covers
+
+The listener can only filter entities that **carry** the column — it inspects mappers
+and cannot follow a join to find one. **Every org-scoped model declares it**, ten in
+total:
+
+`user`, `cloud_account`, `recommendation`, `chat_session`, `forecast_snapshot`,
+`agent_run_log`, `audit_log`, — since migration `004` — `resource` and
+`billing_entry`, and — since migration `005` — `metric_sample`.
+
+Those last two are the platform's largest tables, and until `004` they carried no
+`organization_id` at all: they were scoped transitively through
+`cloud_account_id → cloud_accounts.organization_id`, which the listener cannot see.
+Their isolation therefore rested on services resolving the caller's `account_ids`
+first — correct, but a *single* layer. `004` denormalises the column onto both and
+backfills it from the owning cloud account, so the ORM guard now engages on them
+directly.
+
+The redundancy is the point. A service that forgets to scope its query — or scopes it
+to the wrong tenant — still cannot read another organization's rows:
+`ResourceService.list_resources()` called with org A's id, under a context bound to a
+different org, returns zero rows rather than A's 50. `tests/test_tenant_isolation_resources.py`
+proves this with deliberately naive statements (`select(Resource)` with no manual
+`cloud_account_id` filter), so it exercises the listener rather than the service code
+that was already correct.
+
+#### `metric_sample` — closed by `005`
+
+Until migration `005`, `metric_sample` had no `organization_id` and was scoped only
+through `resource_id`, so the listener never engaged on it and its isolation was
+single-layer — resting on callers constraining on resource ids they had already
+proven in-org (`RightSizingAgent._p95`, `ResourceService.get_resource`). `005`
+denormalises the column and backfills it from the owning resource, on the same
+add-nullable → backfill → refuse-on-orphans → NOT NULL pattern as `004`.
+
+`metric_samples` is RANGE-partitioned by month, which the migration handles by
+applying all DDL to the parent: Postgres propagates `ADD COLUMN`, `SET NOT NULL` and
+`CREATE INDEX` to every partition, and has supported a foreign key from a partitioned
+table to a non-partitioned one since PG12. `tests/test_tenant_isolation_metrics.py`
+covers it with the same deliberately-naive statements as the resources suite.
+
+There are now no org-scoped tables left on single-layer isolation.
+
+#### The scheduler
+
+A deliberate third case: it has no request lifecycle, so nothing binds the
+`ContextVar` and the listener is a no-op for every query it makes. The agents take
+`organization_id` as a parameter and filter on it explicitly; see
+`tests/test_scheduler_isolation.py`. Do not wrap the scheduler loop in a
+`TenantContext` — it legitimately spans all tenants.
+
+## Startup secrets guard
+
+`Settings._guard_secrets` (a Pydantic `model_validator` in `config.py`) refuses to
+construct the settings object — so the app cannot boot — when `APP_ENV=production` and
+any of `JWT_SECRET`, `APP_SECRET_KEY` or `FERNET_MASTER_KEY` is empty or still at its
+placeholder value. The error names exactly which ones are wrong.
+
+This closes a specific hole: an empty `FERNET_MASTER_KEY` falls back to a key derived
+from a **source-code constant**, so anyone holding the repo could decrypt every stored
+cloud credential. Failing to start is the correct response.
+
+Separately, a *malformed* `FERNET_MASTER_KEY` is rejected in **every** environment,
+including dev — a bad key is never intentional, and without this check it surfaces much
+later as an opaque error deep inside credential encryption.
+
+Dev and demo still boot on the placeholders; the guard only tightens in production.
+Covered by `backend/tests/test_config.py`.
 
 ## Credential encryption
 

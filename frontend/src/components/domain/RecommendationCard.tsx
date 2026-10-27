@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import { Check, Clock, ExternalLink, X } from "lucide-react";
+import { forwardRef } from "react";
 
 import { AgentBadge } from "@/components/domain/AgentBadge";
+import { CalculationBasis } from "@/components/domain/CalculationBasis";
 import { ConfidencePill, StatusBadge } from "@/components/domain/SeverityPill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,19 +19,26 @@ interface RecommendationCardProps {
   onInvestigate?: () => void;
 }
 
-/** Rich recommendation card with agent color accent and animated actions. */
-export function RecommendationCard({
-  recommendation: r,
-  onAccept,
-  onReject,
-  onSnooze,
-  onInvestigate,
-}: RecommendationCardProps) {
+/**
+ * Rich recommendation card with agent color accent and animated actions.
+ *
+ * `forwardRef` is required, not stylistic: the feed wraps these in an
+ * `AnimatePresence mode="popLayout"`, which measures each exiting child so the
+ * remaining cards can slide up smoothly. Measuring needs a ref on the child, and
+ * a plain function component silently drops it — React warns, and the exit
+ * animation degrades.
+ */
+export const RecommendationCard = forwardRef<HTMLDivElement, RecommendationCardProps>(
+  function RecommendationCard(
+    { recommendation: r, onAccept, onReject, onSnooze, onInvestigate },
+    ref,
+  ) {
   const accent = AGENT_META[r.agent].color;
   const isPending = r.status === "pending";
 
   return (
     <motion.div
+      ref={ref}
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -112,7 +121,9 @@ export function RecommendationCard({
             )}
           </div>
         </div>
+
+        <CalculationBasis recommendation={r} />
       </Card>
     </motion.div>
   );
-}
+});

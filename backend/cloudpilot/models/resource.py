@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,8 +26,18 @@ class Resource(BaseModel):
     __table_args__ = (
         Index("ix_resources_account_service", "cloud_account_id", "service"),
         Index("ix_resources_account_region", "cloud_account_id", "region"),
+        Index("ix_resources_org", "organization_id"),
     )
 
+    #: Denormalized from ``cloud_account.organization_id``. Redundant on purpose: the
+    #: tenant listener in ``core/tenant.py`` filters entities that declare this column,
+    #: and it cannot follow a join to find one. Without it this table is guarded only
+    #: by services remembering to scope their queries. Every write path must set it.
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     cloud_account_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("cloud_accounts.id", ondelete="CASCADE"),
@@ -38,6 +48,10 @@ class Resource(BaseModel):
     service: Mapped[str] = mapped_column(String(80), nullable=False)
     region: Mapped[str] = mapped_column(String(40), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: How many instances of ``sku`` this resource bills for. A single VM is 1; an AKS
+    #: or GKE node pool of four nodes is 4. Without this, a right-sizing saving is
+    #: computed per-instance and under-reports a node pool by its node count.
+    node_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     tags_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False
     )
