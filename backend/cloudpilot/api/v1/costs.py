@@ -32,8 +32,7 @@ async def cost_breakdown(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CostBreakdownResponse:
-    data = await CostService(db, user.organization_id).get_breakdown()
-    return CostBreakdownResponse(**data)
+    return await CostService(db, user.organization_id).get_breakdown()
 
 
 @router.get("/timeseries", response_model=CostTimeseriesResponse)

@@ -25,15 +25,18 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any
+from typing import Any, TypeVar
 
 from loguru import logger
+from pydantic import BaseModel, ValidationError
 
 from cloudpilot.core.rate_limit import get_redis
 
 #: Namespace for every dashboard aggregate key, so one org's cache can be
 #: dropped with a single scan without touching rate-limit or revocation keys.
 _PREFIX = "dashboard"
+
+M = TypeVar("M", bound=BaseModel)
 
 
 def org_key(organization_id: uuid.UUID, name: str, *parts: object) -> str:
@@ -59,10 +62,46 @@ async def get_json(key: str) -> Any | None:
         return None
 
 
+def _encode(value: Any) -> Any:
+    """Fallback encoder for values ``json`` cannot serialize on its own.
+
+    Pydantic models are handled explicitly rather than left to ``str``. Falling
+    back to ``str`` for a model stores its *repr* — ``"provider=<CloudProvider.
+    AZURE: 'azure'> cost_usd=3953.16"`` — which round-trips as a string and then
+    fails validation on the next cache hit, turning a caching layer into a 500 on
+    every request after the first. UUIDs, dates and Decimals do stringify
+    correctly, so they keep the plain ``str`` path.
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    return str(value)
+
+
+async def get_model(key: str, model: type[M]) -> M | None:
+    """Return a cached value validated into ``model``, or None on miss or mismatch.
+
+    An entry whose *shape* no longer matches is discarded exactly like an entry
+    that will not parse: same rule, one step later. Without this, any schema
+    change to a cached response 500s every user still holding a pre-deploy entry
+    until its TTL runs out — a cache is meant to cost latency when it is wrong,
+    never correctness.
+    """
+    raw = await get_json(key)
+    if raw is None:
+        return None
+    try:
+        return model.model_validate(raw)
+    except ValidationError:
+        logger.warning(
+            "Discarding cache entry at {} that no longer matches {}", key, model.__name__
+        )
+        return None
+
+
 async def set_json(key: str, value: Any, ttl_seconds: int) -> None:
     """Store a JSON-serializable value under ``key`` with a TTL."""
     try:
-        await get_redis().setex(key, ttl_seconds, json.dumps(value, default=str))
+        await get_redis().setex(key, ttl_seconds, json.dumps(value, default=_encode))
     except Exception as exc:  # pragma: no cover - resilience
         logger.debug("Cache unavailable on write, skipping: {}", exc)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from datetime import date, timedelta
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +21,7 @@ from cloudpilot.models.recommendation import (
 from cloudpilot.models.resource import Resource
 from cloudpilot.schemas.cost import (
     AnomalyEntry,
+    CostBreakdownResponse,
     CostSummary,
     CostTimeseriesPoint,
     CostTimeseriesResponse,
@@ -46,8 +46,8 @@ class CostService:
 
     async def get_summary(self) -> CostSummary:
         key = cache.org_key(self.org_id, "summary")
-        if (hit := await cache.get_json(key)) is not None:
-            return CostSummary.model_validate(hit)
+        if (hit := await cache.get_model(key, CostSummary)) is not None:
+            return hit
         summary = await self._compute_summary()
         await cache.set_json(key, summary.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
         return summary
@@ -111,19 +111,21 @@ class CostService:
             pending_recommendations=int(pending),
         )
 
-    async def get_breakdown(self) -> dict[str, Any]:
+    async def get_breakdown(self) -> CostBreakdownResponse:
         key = cache.org_key(self.org_id, "breakdown")
-        if (hit := await cache.get_json(key)) is not None:
-            return hit  # type: ignore[no-any-return]
+        if (hit := await cache.get_model(key, CostBreakdownResponse)) is not None:
+            return hit
         breakdown = await self._compute_breakdown()
-        await cache.set_json(key, breakdown, settings.CACHE_DASHBOARD_TTL)
+        await cache.set_json(
+            key, breakdown.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL
+        )
         return breakdown
 
-    async def _compute_breakdown(self) -> dict[str, Any]:
+    async def _compute_breakdown(self) -> CostBreakdownResponse:
         accounts = await self._accounts()
         account_ids = list(accounts)
         if not account_ids:
-            return {"by_provider": [], "by_service": [], "by_region": []}
+            return CostBreakdownResponse(by_provider=[], by_service=[], by_region=[])
 
         today = date.today()
         month_start = today.replace(day=1)
@@ -202,14 +204,16 @@ class CostService:
             {"region": region, "cost_usd": round(v, 2)}
             for region, v in sorted(region_total.items(), key=lambda x: x[1], reverse=True)
         ]
-        return {"by_provider": by_provider, "by_service": by_service, "by_region": by_region}
+        return CostBreakdownResponse(
+            by_provider=by_provider, by_service=by_service, by_region=by_region
+        )
 
     async def get_timeseries(self, period_days: int = 90) -> CostTimeseriesResponse:
         # The period is part of the key: the 7/30/90-day views are different
         # answers to different questions and must not share an entry.
         key = cache.org_key(self.org_id, "timeseries", period_days)
-        if (hit := await cache.get_json(key)) is not None:
-            return CostTimeseriesResponse.model_validate(hit)
+        if (hit := await cache.get_model(key, CostTimeseriesResponse)) is not None:
+            return hit
         series = await self._compute_timeseries(period_days)
         await cache.set_json(key, series.model_dump(mode="json"), settings.CACHE_DASHBOARD_TTL)
         return series
