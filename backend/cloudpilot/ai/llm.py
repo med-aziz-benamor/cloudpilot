@@ -1,7 +1,7 @@
 """LLM client abstraction — local Ollama (default) with an OpenAI fallback.
 
 The provider is selected once at construction: OpenAI is used only when an API key
-is configured AND demo mode is off; otherwise the local Qwen 2.5 4B model via Ollama
+is configured AND demo mode is off; otherwise the local Qwen 2.5 3B model via Ollama
 is used (the privacy-by-design default that fits an 8 GB MacBook Air M1).
 """
 
